@@ -11,7 +11,7 @@ An opinionated base template for creating quick cli tools with Bun and typescrip
 | Command         | Action                                         |
 | :-------------- | :--------------------------------------------- |
 | `bun --help`    | Shows all the available commands               |
-| `bun dev`       | Run entry point `index.ts` with bun            |
+| `bun dev`       | Run entry point `cli.ts` with bun              |
 | `bun run build` | Build your production package/cli to `./dist/` |
 
 ## Tech Stack
