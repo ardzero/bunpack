@@ -24,6 +24,7 @@ const exitCancelled = (message = "Operation cancelled"): void => {
 interface CliArguments {
   _: (string | number)[];
   y: boolean;
+  da: boolean;
   git?: boolean;
   install?: boolean;
   cursor?: boolean;
@@ -88,7 +89,7 @@ function replaceReadmeRepoPlaceholder(projectRoot: string, nameForPackage: strin
   writeFileSync(readmePath, content);
 }
 
-function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string): void {
+function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string, author: string): void {
   const packageJsonPath = resolve(projectRoot, "package.json");
   if (!existsSync(packageJsonPath)) return;
   let existing: Record<string, unknown>;
@@ -98,7 +99,6 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string)
     return;
   }
   const slug = slugifyPackageName(nameForPackage);
-  const author = typeof existing.author === "string" ? existing.author : "";
   const license = typeof existing.license === "string" ? existing.license : "MIT";
   const devDeps = existing.devDependencies;
   const devDependencies =
@@ -109,7 +109,7 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string)
   const next: Record<string, unknown> = {
     name: slug,
     description: "A CLI tool built with Bun and TypeScript.",
-    author: author || undefined,
+    author: author.trim() || undefined,
     version: "0.0.1",
     license,
     type: "module",
@@ -127,6 +127,45 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string)
   };
 
   writeFileSync(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+function readAuthorFromTemplatePackageJson(templatePackageJsonPath: string): string {
+  if (!existsSync(templatePackageJsonPath)) return "";
+  try {
+    const pkg = JSON.parse(readFileSync(templatePackageJsonPath, "utf-8")) as { author?: string };
+    return typeof pkg.author === "string" ? pkg.author : "";
+  } catch {
+    return "";
+  }
+}
+
+function isValidAuthorEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+async function resolveAuthorForProject(templatePackageJsonPath: string): Promise<string> {
+  if (argv.da) {
+    return readAuthorFromTemplatePackageJson(templatePackageJsonPath);
+  }
+
+  const authorName = await p.text({
+    message: "Author name",
+    placeholder: "Ada Lovelace",
+    validate: (v) => (!v?.trim() ? "Name is required" : undefined),
+  });
+  if (p.isCancel(authorName)) exitCancelled();
+
+  const authorEmail = await p.text({
+    message: "Author email",
+    placeholder: "ada@example.com",
+    validate: (v) => {
+      if (!v?.trim()) return "Email is required";
+      if (!isValidAuthorEmail(v)) return "Enter a valid email address";
+    },
+  });
+  if (p.isCancel(authorEmail)) exitCancelled();
+
+  return `${(authorName as string).trim()} <${(authorEmail as string).trim()}>`;
 }
 
 /** Relative path from cwd without leading `./` (e.g. `pkgs/miko`). Not for `.` current-dir mode. */
@@ -187,14 +226,16 @@ function showHelp(): void {
 
   p.note(
     `${color.cyan("bun create bunpack my-cli")}\n  Create a new project with interactive prompts\n\n` +
-    `${color.cyan("bun create bunpack my-cli -y")}\n  Create with all defaults (install deps, init git)\n\n` +
+    `${color.cyan("bun create bunpack my-cli -y --da")}\n  Skip prompts: install deps, init git, template author\n\n` +
+    `${color.cyan("bun create bunpack ./pkgs/my-cli -y")}\n  Create at a relative path under the current directory\n\n` +
     `${color.cyan("bun create bunpack my-cli --cursor --git")}\n  Create and open in Cursor with git initialized\n\n` +
     `${color.cyan("bun create bunpack my-cli --no-install")}\n  Create without installing dependencies`,
     "Examples",
   );
 
   console.log(color.bold("\nOptions:"));
-  console.log(`  ${color.cyan("-y, --yes")}              Skip all prompts and use defaults`);
+  console.log(`  ${color.cyan("-y, --yes")}              Skip install/git prompts (author still asked unless ${color.cyan("--da")})`);
+  console.log(`  ${color.cyan("--da")}                  Use template author; skip author prompts (also ${color.cyan("-da")})`);
   console.log(`  ${color.cyan("--git")}                  Initialize git repository`);
   console.log(`  ${color.cyan("--no-git")}               Skip git initialization`);
   console.log(`  ${color.cyan("--install")}              Install dependencies`);
@@ -207,12 +248,22 @@ function showHelp(): void {
   p.outro(`For more info: ${color.underline(color.cyan("https://github.com/ardzero/bunpack"))}`);
 }
 
-const argv = yargs(hideBin(process.argv))
+/** yargs expands `-da` into `-d` + `-a` unless we normalize to `--da`. */
+function normalizeCliArgv(argv: string[]): string[] {
+  return argv.map((a) => (a === "-da" ? "--da" : a));
+}
+
+const argv = yargs(normalizeCliArgv(hideBin(process.argv)))
   .help(false)
   .version(false)
   .option("y", {
     type: "boolean",
-    description: "Skip all prompts and use defaults (install deps, init git)",
+    description: "Skip install/git prompts (use --da to skip author prompts too)",
+    default: false,
+  })
+  .option("da", {
+    type: "boolean",
+    description: "Use template author field; skip author name/email prompts",
     default: false,
   })
   .option("git", {
@@ -338,6 +389,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const templatePkgPath = resolve(process.cwd(), tempDir, "package.json");
+  const authorForProject = await resolveAuthorForProject(templatePkgPath);
+
   const projectRoot = useCurrentDir ? process.cwd() : resolve(process.cwd(), projectName);
   const nameForPackage = basename(useCurrentDir ? projectRoot : projectName);
 
@@ -386,19 +440,8 @@ async function main(): Promise<void> {
       }
     }
 
-    const templateAuthor = (() => {
-      const packageJsonPath = resolve(projectRoot, "package.json");
-      if (!existsSync(packageJsonPath)) return "";
-      try {
-        const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { author?: string };
-        return typeof pkg.author === "string" ? pkg.author : "";
-      } catch {
-        return "";
-      }
-    })();
-
-    applyProjectReadme(projectRoot, nameForPackage, templateAuthor);
-    applyNewProjectPackageJson(projectRoot, nameForPackage);
+    applyProjectReadme(projectRoot, nameForPackage, authorForProject);
+    applyNewProjectPackageJson(projectRoot, nameForPackage, authorForProject);
 
     s.stop("Cleaned up");
   } catch (error: unknown) {
