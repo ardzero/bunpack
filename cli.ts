@@ -21,26 +21,6 @@ const exitCancelled = (message = "Operation cancelled"): void => {
   process.exit(0);
 };
 
-/**
- * Two Ctrl+C in quick succession exits; a single Ctrl+C skips the current step (see prompt handling).
- * @returns true if the CLI should exit now (second tap in window).
- */
-const INTERRUPT_EXIT_GAP_MS = 450;
-let lastInterruptAt = 0;
-
-function clearInterruptWindow(): void {
-  lastInterruptAt = 0;
-}
-
-function shouldExitOnInterrupt(): boolean {
-  const now = Date.now();
-  if (lastInterruptAt > 0 && now - lastInterruptAt < INTERRUPT_EXIT_GAP_MS) {
-    return true;
-  }
-  lastInterruptAt = now;
-  return false;
-}
-
 interface CliArguments {
   _: (string | number)[];
   y: boolean;
@@ -194,7 +174,6 @@ async function promptForProjectName(): Promise<string> {
 
   if (p.isCancel(response)) exitCancelled();
 
-  clearInterruptWindow();
   return response as string;
 }
 
@@ -453,43 +432,26 @@ async function main(): Promise<void> {
             initialValue: true,
           }),
       },
-      {
-        onCancel: () => {
-          if (shouldExitOnInterrupt()) {
-            exitCancelled();
-          }
-        },
-      },
+      { onCancel: () => exitCancelled() },
     );
-    clearInterruptWindow();
-    shouldInstall = typeof install === "boolean" ? install : false;
-    shouldInitGit = typeof git === "boolean" ? git : false;
+    shouldInstall = install as boolean;
+    shouldInitGit = git as boolean;
   } else {
     if (shouldInstall === undefined) {
       const installResponse = await p.confirm({
         message: "Install dependencies?",
         initialValue: true,
       });
-      if (p.isCancel(installResponse)) {
-        if (shouldExitOnInterrupt()) exitCancelled();
-        shouldInstall = false;
-      } else {
-        clearInterruptWindow();
-        shouldInstall = installResponse;
-      }
+      if (p.isCancel(installResponse)) exitCancelled();
+      shouldInstall = installResponse as boolean;
     }
     if (shouldInitGit === undefined) {
       const gitResponse = await p.confirm({
         message: "Initialize a new git repository?",
         initialValue: true,
       });
-      if (p.isCancel(gitResponse)) {
-        if (shouldExitOnInterrupt()) exitCancelled();
-        shouldInitGit = false;
-      } else {
-        clearInterruptWindow();
-        shouldInitGit = gitResponse;
-      }
+      if (p.isCancel(gitResponse)) exitCancelled();
+      shouldInitGit = gitResponse as boolean;
     }
   }
 
@@ -529,13 +491,9 @@ async function main(): Promise<void> {
         message: "Continue without installing dependencies?",
         initialValue: true,
       });
-      if (p.isCancel(continueResponse)) {
-        if (shouldExitOnInterrupt()) exitCancelled();
-      } else if (!continueResponse) {
+      if (p.isCancel(continueResponse) || !continueResponse) {
         p.cancel("Operation cancelled");
         process.exit(1);
-      } else {
-        clearInterruptWindow();
       }
       shouldInstall = false;
     }
@@ -571,47 +529,40 @@ async function main(): Promise<void> {
     });
 
     if (p.isCancel(connectRemoteResponse)) {
-      if (shouldExitOnInterrupt()) exitCancelled();
-    } else {
-      clearInterruptWindow();
-      if (connectRemoteResponse) {
-        const remoteUrlResponse = await p.text({
-          message: "Enter the remote repository URL:",
-          placeholder: "https://github.com/username/repo.git",
-          validate: (value: string | undefined) => {
-            if (!value) return "Remote URL is required";
-            if (
-              !value.startsWith("https://github.com/") &&
-              !value.startsWith("git@github.com:") &&
-              !value.startsWith("https://gitlab.com/") &&
-              !value.startsWith("git@gitlab.com:")
-            ) {
-              return "Please enter a valid Github or Gitlab repository URL";
-            }
-          },
+      exitCancelled();
+    } else if (connectRemoteResponse) {
+      const remoteUrlResponse = await p.text({
+        message: "Enter the remote repository URL:",
+        placeholder: "https://github.com/username/repo.git",
+        validate: (value: string | undefined) => {
+          if (!value) return "Remote URL is required";
+          if (
+            !value.startsWith("https://github.com/") &&
+            !value.startsWith("git@github.com:") &&
+            !value.startsWith("https://gitlab.com/") &&
+            !value.startsWith("git@gitlab.com:")
+          ) {
+            return "Please enter a valid Github or Gitlab repository URL";
+          }
+        },
+      });
+
+      if (p.isCancel(remoteUrlResponse)) {
+        exitCancelled();
+      } else {
+        const remoteUrl = remoteUrlResponse as string;
+        const pushChoice = await p.select({
+          message: "What would you like to do?",
+          options: [
+            { value: "push", label: "Add remote and push code now", hint: "runs git push" },
+            { value: "connect", label: "Just add remote (don't push yet)", hint: "configure origin only" },
+          ],
+          initialValue: "push",
         });
 
-        if (p.isCancel(remoteUrlResponse)) {
-          if (shouldExitOnInterrupt()) exitCancelled();
+        if (p.isCancel(pushChoice)) {
+          exitCancelled();
         } else {
-          const remoteUrl = remoteUrlResponse as string;
-          const pushChoiceResponse = await p.select({
-            message: "What would you like to do?",
-            options: [
-              { value: "push", label: "Add remote and push code now", hint: "runs git push" },
-              { value: "connect", label: "Just add remote (don't push yet)", hint: "configure origin only" },
-            ],
-            initialValue: "push",
-          });
-
-          let pushChoice: "push" | "connect";
-          if (p.isCancel(pushChoiceResponse)) {
-            if (shouldExitOnInterrupt()) exitCancelled();
-            pushChoice = "connect";
-          } else {
-            pushChoice = pushChoiceResponse as "push" | "connect";
-          }
-
           const shouldPush = pushChoice === "push";
           s.start(shouldPush ? "Connecting and pushing to remote repository" : "Adding remote repository");
           try {
@@ -672,10 +623,8 @@ async function main(): Promise<void> {
       initialValue: "cursor",
     });
     if (p.isCancel(editorResponse)) {
-      if (shouldExitOnInterrupt()) exitCancelled();
       editorChoice = "skip";
     } else {
-      clearInterruptWindow();
       editorChoice = editorResponse as EditorChoice;
     }
   }
