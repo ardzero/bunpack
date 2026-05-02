@@ -21,6 +21,7 @@
   ],
   "main": "./dist/cli.js",
   "scripts": {
+    "dev": "bun run index.ts",
     "build": "bun build cli.ts --outdir dist --target node --minify --sourcemap=external",
     "prepublishOnly": "bun run build"
   },

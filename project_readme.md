@@ -1,18 +1,18 @@
-# create bunpack
+[![?{project-name}](?{repo-link}/blob/main/public/ogImage.webp)](?{repo-link})
 
-An opinionated base template for creating quick cli tools with Bun and typescript and a few helpful utilities.
+# ?{project-name}
 
-> This requires `bun` cause we're using it as the bundler.
+An cli tool built on top of the [bunpack](https://github.com/ardzero/bunpack) starter kit.
 
-### Project Repo: [bunpack](https://github.com/ardzero/bunpack)
+### Project Repo: [?{project-name}](?{repo-link})
 
 #### Command list
 
-| Command         | Action                                         |
-| :-------------- | :--------------------------------------------- |
-| `bun --help`    | Shows all the available commands               |
-| `bun dev`       | Run entry point `index.ts` with bun            |
-| `bun run build` | Build your production package/cli to `./dist/` |
+| Command      | Action                           |
+| :----------- | :------------------------------- |
+| `bun --help` | Shows all the available commands |
+
+> just replace `bun` with any package manager you're using
 
 ## Tech Stack
 
