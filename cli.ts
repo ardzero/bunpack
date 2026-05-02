@@ -13,6 +13,14 @@ const REPO_LINK_PLACEHOLDER_PREFIX = "https://github.com/ardzero/";
 /** Paths to drop from the cloned template (scaffold-only or unwanted in new projects). */
 const PATHS_TO_REMOVE: string[] = ["cli.ts", "dist"];
 
+const INTRO_TITLE = color.bgMagenta(color.black(" create-bunpack "));
+
+/** Clack: use `cancel()` then exit for Ctrl+C / prompt cancellation (see @clack/prompts README). */
+const exitCancelled = (message = "Operation cancelled"): void => {
+  p.cancel(message);
+  process.exit(0);
+};
+
 interface CliArguments {
   _: (string | number)[];
   y: boolean;
@@ -140,17 +148,14 @@ async function promptForProjectName(): Promise<string> {
     validate: validateProjectName,
   });
 
-  if (p.isCancel(response)) {
-    p.cancel("Operation cancelled");
-    process.exit(0);
-  }
+  if (p.isCancel(response)) exitCancelled();
 
   return response as string;
 }
 
 function showHelp(): void {
   console.clear();
-  p.intro(color.bgMagenta(color.black(" create-bunpack ")));
+  p.intro(INTRO_TITLE);
 
   console.log(color.bold("\nUsage:"));
   console.log(`  ${color.cyan("bun create bunpack")} ${color.dim("[project-name] [options]")}`);
@@ -223,7 +228,7 @@ if (argv.h) {
 
 if (argv.v) {
   console.clear();
-  p.intro(color.bgMagenta(color.black(" create-bunpack ")));
+  p.intro(INTRO_TITLE);
   console.log(`\n  ${color.bold("Version:")} ${color.cyan(getVersion())}`);
   p.outro(color.dim("https://github.com/ardzero/bunpack"));
   process.exit(0);
@@ -241,7 +246,7 @@ function detectPackageManager(): PackageManager {
 async function main(): Promise<void> {
   console.clear();
 
-  p.intro(color.bgMagenta(color.black(" create-bunpack ")));
+  p.intro(INTRO_TITLE);
 
   let projectName: string = (argv._[0] as string | undefined) || "";
   let useCurrentDir = false;
@@ -277,14 +282,16 @@ async function main(): Promise<void> {
     }
   }
 
-  const s = p.spinner();
+  const s = p.spinner({
+    onCancel: () => exitCancelled(),
+  });
   s.start("Cloning template");
   const tempDir = useCurrentDir ? ".bunpack-temp" : projectName;
   try {
     await execa("git", ["clone", "--depth", "1", REPO_URL, tempDir]);
     s.stop("Template cloned");
   } catch (error: unknown) {
-    s.stop("Failed to clone template");
+    s.error("Failed to clone template");
     const message = error instanceof Error ? error.message : String(error);
     if (
       message.includes("Could not resolve host") ||
@@ -370,7 +377,7 @@ async function main(): Promise<void> {
 
     s.stop("Cleaned up");
   } catch (error: unknown) {
-    s.stop("Failed to clean up");
+    s.error("Failed to clean up");
     p.log.warn("Could not remove some directories");
     p.log.info("You can manually delete them later.");
     const message = error instanceof Error ? error.message : String(error);
@@ -381,18 +388,46 @@ async function main(): Promise<void> {
   p.log.info(`Detected package manager: ${packageManager}`);
 
   let shouldInstall = argv.install;
+  let shouldInitGit = argv.git;
+
   if (argv.y) {
     shouldInstall = true;
-  } else if (shouldInstall === undefined) {
-    const installResponse = await p.confirm({
-      message: "Install dependencies?",
-      initialValue: true,
-    });
-    if (p.isCancel(installResponse)) {
-      p.cancel("Operation cancelled");
-      process.exit(0);
+    shouldInitGit = true;
+  } else if (shouldInstall === undefined && shouldInitGit === undefined) {
+    const { install, git } = await p.group(
+      {
+        install: () =>
+          p.confirm({
+            message: "Install dependencies?",
+            initialValue: true,
+          }),
+        git: () =>
+          p.confirm({
+            message: "Initialize a new git repository?",
+            initialValue: true,
+          }),
+      },
+      { onCancel: () => exitCancelled() },
+    );
+    shouldInstall = install as boolean;
+    shouldInitGit = git as boolean;
+  } else {
+    if (shouldInstall === undefined) {
+      const installResponse = await p.confirm({
+        message: "Install dependencies?",
+        initialValue: true,
+      });
+      if (p.isCancel(installResponse)) exitCancelled();
+      shouldInstall = installResponse as boolean;
     }
-    shouldInstall = installResponse;
+    if (shouldInitGit === undefined) {
+      const gitResponse = await p.confirm({
+        message: "Initialize a new git repository?",
+        initialValue: true,
+      });
+      if (p.isCancel(gitResponse)) exitCancelled();
+      shouldInitGit = gitResponse as boolean;
+    }
   }
 
   if (shouldInstall) {
@@ -404,7 +439,7 @@ async function main(): Promise<void> {
       });
       s.stop("Dependencies installed");
     } catch (error: unknown) {
-      s.stop("Failed to install dependencies");
+      s.error("Failed to install dependencies");
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("ENOTFOUND") || message.includes("network") || message.includes("timeout")) {
         p.log.error("Network error during installation");
@@ -439,21 +474,6 @@ async function main(): Promise<void> {
     }
   }
 
-  let shouldInitGit = argv.git;
-  if (argv.y) {
-    shouldInitGit = true;
-  } else if (shouldInitGit === undefined) {
-    const gitResponse = await p.confirm({
-      message: "Initialize a new git repository?",
-      initialValue: true,
-    });
-    if (p.isCancel(gitResponse)) {
-      p.cancel("Operation cancelled");
-      process.exit(0);
-    }
-    shouldInitGit = gitResponse;
-  }
-
   let gitInitialized = false;
   if (shouldInitGit) {
     s.start("Initializing git repository");
@@ -484,7 +504,7 @@ async function main(): Promise<void> {
     });
 
     if (p.isCancel(connectRemoteResponse)) {
-      p.log.info("Skipping remote repository setup");
+      exitCancelled();
     } else if (connectRemoteResponse) {
       const remoteUrlResponse = await p.text({
         message: "Enter the remote repository URL:",
@@ -503,20 +523,20 @@ async function main(): Promise<void> {
       });
 
       if (p.isCancel(remoteUrlResponse)) {
-        p.log.info("Skipping remote repository setup");
+        exitCancelled();
       } else {
         const remoteUrl = remoteUrlResponse as string;
         const pushChoice = await p.select({
           message: "What would you like to do?",
           options: [
-            { value: "push", label: "Add remote and push code now" },
-            { value: "connect", label: "Just add remote (don't push yet)" },
+            { value: "push", label: "Add remote and push code now", hint: "runs git push" },
+            { value: "connect", label: "Just add remote (don't push yet)", hint: "configure origin only" },
           ],
           initialValue: "push",
         });
 
         if (p.isCancel(pushChoice)) {
-          p.log.info("Skipping remote repository setup");
+          exitCancelled();
         } else {
           const shouldPush = pushChoice === "push";
           s.start(shouldPush ? "Connecting and pushing to remote repository" : "Adding remote repository");
@@ -536,7 +556,7 @@ async function main(): Promise<void> {
             }
             replaceReadmeRepoPlaceholder(projectRoot, nameForPackage, remoteUrl);
           } catch (error: unknown) {
-            s.stop(shouldPush ? "Failed to connect and push" : "Failed to add remote");
+            s.error(shouldPush ? "Failed to connect and push" : "Failed to add remote");
             const message = error instanceof Error ? error.message : String(error);
             if (message.includes("Permission denied") || message.includes("authentication failed")) {
               p.log.error("Authentication failed");
@@ -571,9 +591,9 @@ async function main(): Promise<void> {
     const editorResponse = await p.select({
       message: "Open project in editor?",
       options: [
-        { value: "cursor", label: "Cursor" },
-        { value: "vscode", label: "VS Code" },
-        { value: "skip", label: "Skip" },
+        { value: "cursor", label: "Cursor", hint: "cursor CLI" },
+        { value: "vscode", label: "VS Code", hint: "code CLI" },
+        { value: "skip", label: "Skip", hint: "finish here" },
       ],
       initialValue: "cursor",
     });
@@ -620,9 +640,8 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   const err = error as { isCanceled?: boolean; message?: string };
-  if (err.isCanceled) {
-    p.cancel("Operation cancelled by user");
-    process.exit(0);
+  if (err.isCanceled || p.isCancel(error)) {
+    exitCancelled("Operation cancelled by user");
   }
   p.log.error("An unexpected error occurred:");
   p.log.info(err.message || String(error));
