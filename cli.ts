@@ -25,6 +25,7 @@ interface CliArguments {
   _: (string | number)[];
   y: boolean;
   da: boolean;
+  repo?: string;
   git?: boolean;
   install?: boolean;
   cursor?: boolean;
@@ -87,6 +88,69 @@ function replaceReadmeRepoPlaceholder(projectRoot: string, nameForPackage: strin
     .replace(/\.git$/i, "");
   content = content.split(placeholder).join(displayUrl);
   writeFileSync(readmePath, content);
+}
+
+function validateRemoteRepoUrl(value: string | undefined): string | undefined {
+  if (value == null || !value.trim()) return "Remote URL is required";
+  const v = value.trim();
+  if (
+    !v.startsWith("https://github.com/") &&
+    !v.startsWith("git@github.com:") &&
+    !v.startsWith("https://gitlab.com/") &&
+    !v.startsWith("git@gitlab.com:")
+  ) {
+    return "Please enter a valid GitHub or GitLab repository URL";
+  }
+  return undefined;
+}
+
+type ClackSpinner = ReturnType<typeof p.spinner>;
+
+async function connectRemoteRepository(
+  s: ClackSpinner,
+  gitCwd: string,
+  projectRoot: string,
+  nameForPackage: string,
+  remoteUrl: string,
+  shouldPush: boolean,
+): Promise<void> {
+  s.start(shouldPush ? "Connecting and pushing to remote repository" : "Adding remote repository");
+  try {
+    await execa("git", ["remote", "add", "origin", remoteUrl], { cwd: gitCwd });
+    await execa("git", ["branch", "-M", "main"], { cwd: gitCwd });
+    if (shouldPush) {
+      await execa("git", ["push", "-u", "origin", "main"], { cwd: gitCwd });
+      s.stop("Connected and pushed to remote repository");
+      p.log.success(`Successfully pushed to ${remoteUrl}`);
+    } else {
+      await execa("git", ["config", "push.autoSetupRemote", "true"], { cwd: gitCwd });
+      s.stop("Remote repository added");
+      p.log.success(`Remote added: ${remoteUrl}`);
+      p.log.info("You can push later with: git push (auto-tracking enabled)");
+    }
+    replaceReadmeRepoPlaceholder(projectRoot, nameForPackage, remoteUrl);
+  } catch (error: unknown) {
+    s.error(shouldPush ? "Failed to connect and push" : "Failed to add remote");
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Permission denied") || message.includes("authentication failed")) {
+      p.log.error("Authentication failed");
+      p.log.info("Make sure you have the correct permissions and authentication set up.");
+    } else if (message.includes("Repository not found")) {
+      p.log.error("Repository not found");
+      p.log.info("Make sure the repository exists and the URL is correct.");
+    } else if (message.includes("already exists")) {
+      p.log.error("Remote 'origin' already exists");
+      p.log.info("You can manually set the remote with:");
+      p.log.info(`  git remote set-url origin ${remoteUrl}`);
+    } else {
+      p.log.error("Error:");
+      p.log.info(message);
+      p.log.info("\nYou can manually connect later with:");
+      p.log.info(`  git remote add origin ${remoteUrl}`);
+      p.log.info("  git config push.autoSetupRemote true");
+      p.log.info("  git push");
+    }
+  }
 }
 
 function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string, author: string): void {
@@ -227,6 +291,7 @@ function showHelp(): void {
   p.note(
     `${color.cyan("bun create bunpack my-cli")}\n  Create a new project with interactive prompts\n\n` +
     `${color.cyan("bun create bunpack my-cli -y")}\n  Skip prompts: install deps, init git, template author\n\n` +
+    `${color.cyan("bun create bunpack miks -y --repo=https://github.com/you/miks.git")}\n  Push to ${color.dim("origin")} after init (GitHub or GitLab URL)\n\n` +
     `${color.cyan("bun create bunpack ./pkgs/my-cli -y")}\n  Create at a relative path under the current directory\n\n` +
     `${color.cyan("bun create bunpack my-cli --cursor --git")}\n  Create and open in Cursor with git initialized\n\n` +
     `${color.cyan("bun create bunpack my-cli --no-install")}\n  Create without installing dependencies`,
@@ -242,6 +307,7 @@ function showHelp(): void {
   console.log(`  ${color.cyan("--no-install")}           Skip dependency installation`);
   console.log(`  ${color.cyan("--cursor")}               Open project in Cursor after creation`);
   console.log(`  ${color.cyan("--vscode")}               Open project in VS Code after creation`);
+  console.log(`  ${color.cyan("--repo")}                 Remote URL (${color.dim("GitHub/GitLab")}); add ${color.cyan("origin")} and ${color.dim("git push")}`);
   console.log(`  ${color.cyan("-h, --help")}             Show this help message`);
   console.log(`  ${color.cyan("-v, --version")}          Show version number`);
 
@@ -283,6 +349,10 @@ const argv = yargs(normalizeCliArgv(hideBin(process.argv)))
   .option("vscode", {
     type: "boolean",
     description: "Open project in VS Code after creation",
+  })
+  .option("repo", {
+    type: "string",
+    description: "Git remote URL (GitHub/GitLab); requires git init; pushes to main",
   })
   .option("h", {
     alias: "help",
@@ -498,6 +568,11 @@ async function main(): Promise<void> {
     }
   }
 
+  if (argv.repo?.trim() && !shouldInitGit) {
+    p.log.error("--repo requires a git repository. Remove --no-git or omit --repo.");
+    process.exit(1);
+  }
+
   if (shouldInstall) {
     s.start("Installing dependencies");
     try {
@@ -565,7 +640,21 @@ async function main(): Promise<void> {
     }
   }
 
-  if (gitInitialized && !argv.y) {
+  if (argv.repo?.trim() && !gitInitialized) {
+    p.log.error("--repo was set but the git repository could not be initialized.");
+    process.exit(1);
+  }
+
+  const gitCwd = useCurrentDir ? process.cwd() : resolve(process.cwd(), projectName);
+
+  if (gitInitialized && argv.repo?.trim()) {
+    const urlErr = validateRemoteRepoUrl(argv.repo);
+    if (urlErr) {
+      p.log.error(urlErr);
+      process.exit(1);
+    }
+    await connectRemoteRepository(s, gitCwd, projectRoot, nameForPackage, argv.repo.trim(), true);
+  } else if (gitInitialized && !argv.y) {
     const connectRemoteResponse = await p.confirm({
       message: "Connect to a remote repository?",
       initialValue: false,
@@ -577,17 +666,7 @@ async function main(): Promise<void> {
       const remoteUrlResponse = await p.text({
         message: "Enter the remote repository URL:",
         placeholder: "https://github.com/username/repo.git",
-        validate: (value: string | undefined) => {
-          if (!value) return "Remote URL is required";
-          if (
-            !value.startsWith("https://github.com/") &&
-            !value.startsWith("git@github.com:") &&
-            !value.startsWith("https://gitlab.com/") &&
-            !value.startsWith("git@gitlab.com:")
-          ) {
-            return "Please enter a valid Github or Gitlab repository URL";
-          }
-        },
+        validate: validateRemoteRepoUrl,
       });
 
       if (p.isCancel(remoteUrlResponse)) {
@@ -607,44 +686,7 @@ async function main(): Promise<void> {
           exitCancelled();
         } else {
           const shouldPush = pushChoice === "push";
-          s.start(shouldPush ? "Connecting and pushing to remote repository" : "Adding remote repository");
-          try {
-            const gitCwd = useCurrentDir ? process.cwd() : resolve(process.cwd(), projectName);
-            await execa("git", ["remote", "add", "origin", remoteUrl], { cwd: gitCwd });
-            await execa("git", ["branch", "-M", "main"], { cwd: gitCwd });
-            if (shouldPush) {
-              await execa("git", ["push", "-u", "origin", "main"], { cwd: gitCwd });
-              s.stop("Connected and pushed to remote repository");
-              p.log.success(`Successfully pushed to ${remoteUrl}`);
-            } else {
-              await execa("git", ["config", "push.autoSetupRemote", "true"], { cwd: gitCwd });
-              s.stop("Remote repository added");
-              p.log.success(`Remote added: ${remoteUrl}`);
-              p.log.info("You can push later with: git push (auto-tracking enabled)");
-            }
-            replaceReadmeRepoPlaceholder(projectRoot, nameForPackage, remoteUrl);
-          } catch (error: unknown) {
-            s.error(shouldPush ? "Failed to connect and push" : "Failed to add remote");
-            const message = error instanceof Error ? error.message : String(error);
-            if (message.includes("Permission denied") || message.includes("authentication failed")) {
-              p.log.error("Authentication failed");
-              p.log.info("Make sure you have the correct permissions and authentication set up.");
-            } else if (message.includes("Repository not found")) {
-              p.log.error("Repository not found");
-              p.log.info("Make sure the repository exists and the URL is correct.");
-            } else if (message.includes("already exists")) {
-              p.log.error("Remote 'origin' already exists");
-              p.log.info("You can manually set the remote with:");
-              p.log.info(`  git remote set-url origin ${remoteUrl}`);
-            } else {
-              p.log.error("Error:");
-              p.log.info(message);
-              p.log.info("\nYou can manually connect later with:");
-              p.log.info(`  git remote add origin ${remoteUrl}`);
-              p.log.info("  git config push.autoSetupRemote true");
-              p.log.info("  git push");
-            }
-          }
+          await connectRemoteRepository(s, gitCwd, projectRoot, nameForPackage, remoteUrl.trim(), shouldPush);
         }
       }
     }

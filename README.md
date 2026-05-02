@@ -8,44 +8,43 @@ An opinionated base template for creating quick CLI tools with Bun and TypeScrip
 
 ## Usage
 
-```text
+```bash
+bun create bunpack
+```
+
+```bash
 bun create bunpack [project-name] [options]
 bunx create-bunpack [project-name] [options]
 ```
 
 `project-name` can be a single segment (`my-cli`) or a **relative path** under the current directory (`./pkgs/my-cli`). Use `.` only in an **empty** directory to scaffold into the current folder.
 
-### Author
-
-- **Interactive** (no `-y`, no `--da`): you are prompted for author name and email; they are written as `Name <email>` in `package.json` and the README license line.
-- **`-y` / `--yes`**: uses the **template** `author` from the scaffold (same as `--da`). You are not asked for name/email.
-- **`--da` / `-da`**: template author only, but **install** and **git** still follow the usual rules (prompts or `--install` / `--git` flags). Use this when you want custom install/git behavior without author prompts.
-
 ### Options
 
-| Flag                         | Description                                                                 |
-| :--------------------------- | :-------------------------------------------------------------------------- |
-| `-y`, `--yes`                | Skip all default prompts; install deps, init git, **template author**       |
-| `--da`, `-da`                | Template `author` only; skip author prompts (`-y` implies this)           |
-| `--git` / `--no-git`         | Initialize or skip git                                                      |
-| `--install` / `--no-install` | Install or skip dependencies                                                |
-| `--cursor`                   | Open the project in Cursor after creation                                   |
-| `--vscode`                   | Open the project in VS Code after creation                                  |
-| `-h`, `--help`               | Show help                                                                   |
-| `-v`, `--version`            | Show version                                                                |
+| Flag                         | Description                                                                                                          |
+| :--------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| `-y`, `--yes`                | Skip all default prompts; install deps, init git, **template author**                                                |
+| `--da`, `-da`                | Template `author` only; skip author prompts (`-y` implies this)                                                      |
+| `--git` / `--no-git`         | Initialize or skip git                                                                                               |
+| `--install` / `--no-install` | Install or skip dependencies                                                                                         |
+| `--repo`                     | Git remote URL (GitHub/GitLab, same rules as interactive); adds `origin`, sets `main`, **pushes**; requires git init |
+| `--cursor`                   | Open the project in Cursor after creation                                                                            |
+| `--vscode`                   | Open the project in VS Code after creation                                                                           |
+| `-h`, `--help`               | Show help                                                                                                            |
+| `-v`, `--version`            | Show version                                                                                                         |
 
 Run `bunx create-bunpack --help` for the same details in the terminal.
 
 ### Examples
 
-| Command                                    |                                                                 |
-| :----------------------------------------- | :-------------------------------------------------------------- |
-| `bun create bunpack my-cli`                | Interactive prompts (location, author, install, git, …)           |
-| `bun create bunpack my-cli -y`             | Defaults only: install, git, template author (no author prompts) |
-| `bun create bunpack my-cli --da`           | Template author; still prompted for install/git (unless flags set) |
-| `bun create bunpack ./pkgs/my-cli -y`      | Nested folder under cwd; same non-interactive defaults as `-y`   |
-| `bun create bunpack my-cli --cursor --git` | Create, init git, open in Cursor                                |
-| `bun create bunpack my-cli --no-install`   | Create without installing dependencies                          |
+| Command                                                             |                                                                  |
+| :------------------------------------------------------------------ | :--------------------------------------------------------------- |
+| `bun create bunpack my-cli`                                         | Interactive prompts (location, author, install, git, …)          |
+| `bun create bunpack my-cli -y`                                      | Defaults only: install, git, template author (no author prompts) |
+| `bun create bunpack miks -y --repo=https://github.com/you/miks.git` | Scaffold, then push to that remote (`https://` or `git@...`)     |
+| `bun create bunpack ./pkgs/my-cli -y`                               | Nested folder under cwd; same non-interactive defaults as `-y`   |
+| `bun create bunpack my-cli --cursor --git`                          | Create, init git, open in Cursor                                 |
+| `bun create bunpack my-cli --no-install`                            | Create without installing dependencies                           |
 
 ---
 
