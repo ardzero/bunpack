@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import yargs from "yargs";
@@ -20,6 +20,26 @@ const exitCancelled = (message = "Operation cancelled"): void => {
   p.cancel(message);
   process.exit(0);
 };
+
+/**
+ * Two Ctrl+C in quick succession exits; a single Ctrl+C skips the current step (see prompt handling).
+ * @returns true if the CLI should exit now (second tap in window).
+ */
+const INTERRUPT_EXIT_GAP_MS = 450;
+let lastInterruptAt = 0;
+
+function clearInterruptWindow(): void {
+  lastInterruptAt = 0;
+}
+
+function shouldExitOnInterrupt(): boolean {
+  const now = Date.now();
+  if (lastInterruptAt > 0 && now - lastInterruptAt < INTERRUPT_EXIT_GAP_MS) {
+    return true;
+  }
+  lastInterruptAt = now;
+  return false;
+}
 
 interface CliArguments {
   _: (string | number)[];
@@ -129,27 +149,52 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string)
   writeFileSync(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
+/** Relative path from cwd without leading `./` (e.g. `pkgs/miko`). Not for `.` current-dir mode. */
+function normalizeProjectPath(name: string): string {
+  let p = name.trim();
+  if (p.startsWith("./")) p = p.slice(2);
+  return p;
+}
+
 function validateProjectName(name: string | undefined): string | undefined {
   if (name == null || name === "") return "Project name is required";
-  if (name === ".") return;
-  if (!/^\.\/[a-zA-Z0-9-]+$/.test(name) && !/^[a-zA-Z0-9-]+$/.test(name)) {
-    return "Project name must contain only letters, numbers, and hyphens";
+  if (name.trim() === ".") return;
+
+  const relative = normalizeProjectPath(name);
+  if (relative === "") return "Project name is required";
+
+  const segments = relative.split("/").filter((s) => s.length > 0);
+  if (segments.length === 0) return "Project name is required";
+  for (const seg of segments) {
+    if (seg === "." || seg === "..") {
+      return "Path must be a relative location like ./my-cli or ./pkgs/my-cli";
+    }
+    if (!/^[a-zA-Z0-9-]+$/.test(seg)) {
+      return "Each path segment must contain only letters, numbers, and hyphens";
+    }
   }
-  const dirName = name.startsWith("./") ? name.slice(2) : name;
-  if (existsSync(resolve(process.cwd(), dirName))) {
-    return `Directory "${dirName}" already exists`;
+
+  const target = resolve(process.cwd(), relative);
+  const cwdResolved = resolve(process.cwd());
+  if (target !== cwdResolved && !target.startsWith(cwdResolved + sep)) {
+    return "Path must be inside the current directory";
+  }
+
+  if (existsSync(target)) {
+    return `Directory "${relative}" already exists`;
   }
 }
 
 async function promptForProjectName(): Promise<string> {
   const response = await p.text({
     message: "Where should we create your new project?",
-    placeholder: "./my-cli",
+    placeholder: "./pkgs/my-cli",
     validate: validateProjectName,
   });
 
   if (p.isCancel(response)) exitCancelled();
 
+  clearInterruptWindow();
   return response as string;
 }
 
@@ -254,7 +299,6 @@ async function main(): Promise<void> {
   if (!projectName) {
     projectName = await promptForProjectName();
   } else {
-    projectName = projectName.startsWith("./") ? projectName.slice(2) : projectName;
     const validationError = validateProjectName(projectName);
     if (validationError) {
       p.log.error(validationError);
@@ -262,7 +306,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (projectName === ".") {
+  if (projectName.trim() === ".") {
     useCurrentDir = true;
     const { readdirSync } = await import("node:fs");
     const files = readdirSync(process.cwd());
@@ -272,9 +316,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
   } else {
-    if (projectName.startsWith("./")) {
-      projectName = projectName.slice(2);
-    }
+    projectName = normalizeProjectPath(projectName);
     const validationError = validateProjectName(projectName);
     if (validationError) {
       p.cancel(validationError);
@@ -288,6 +330,10 @@ async function main(): Promise<void> {
   s.start("Cloning template");
   const tempDir = useCurrentDir ? ".bunpack-temp" : projectName;
   try {
+    if (!useCurrentDir) {
+      const cloneParent = dirname(resolve(process.cwd(), tempDir));
+      mkdirSync(cloneParent, { recursive: true });
+    }
     await execa("git", ["clone", "--depth", "1", REPO_URL, tempDir]);
     s.stop("Template cloned");
   } catch (error: unknown) {
@@ -314,7 +360,7 @@ async function main(): Promise<void> {
   }
 
   const projectRoot = useCurrentDir ? process.cwd() : resolve(process.cwd(), projectName);
-  const nameForPackage = useCurrentDir ? basename(projectRoot) : projectName;
+  const nameForPackage = basename(useCurrentDir ? projectRoot : projectName);
 
   s.start("Cleaning up");
   try {
@@ -407,26 +453,43 @@ async function main(): Promise<void> {
             initialValue: true,
           }),
       },
-      { onCancel: () => exitCancelled() },
+      {
+        onCancel: () => {
+          if (shouldExitOnInterrupt()) {
+            exitCancelled();
+          }
+        },
+      },
     );
-    shouldInstall = install as boolean;
-    shouldInitGit = git as boolean;
+    clearInterruptWindow();
+    shouldInstall = typeof install === "boolean" ? install : false;
+    shouldInitGit = typeof git === "boolean" ? git : false;
   } else {
     if (shouldInstall === undefined) {
       const installResponse = await p.confirm({
         message: "Install dependencies?",
         initialValue: true,
       });
-      if (p.isCancel(installResponse)) exitCancelled();
-      shouldInstall = installResponse as boolean;
+      if (p.isCancel(installResponse)) {
+        if (shouldExitOnInterrupt()) exitCancelled();
+        shouldInstall = false;
+      } else {
+        clearInterruptWindow();
+        shouldInstall = installResponse;
+      }
     }
     if (shouldInitGit === undefined) {
       const gitResponse = await p.confirm({
         message: "Initialize a new git repository?",
         initialValue: true,
       });
-      if (p.isCancel(gitResponse)) exitCancelled();
-      shouldInitGit = gitResponse as boolean;
+      if (p.isCancel(gitResponse)) {
+        if (shouldExitOnInterrupt()) exitCancelled();
+        shouldInitGit = false;
+      } else {
+        clearInterruptWindow();
+        shouldInitGit = gitResponse;
+      }
     }
   }
 
@@ -466,9 +529,13 @@ async function main(): Promise<void> {
         message: "Continue without installing dependencies?",
         initialValue: true,
       });
-      if (p.isCancel(continueResponse) || !continueResponse) {
+      if (p.isCancel(continueResponse)) {
+        if (shouldExitOnInterrupt()) exitCancelled();
+      } else if (!continueResponse) {
         p.cancel("Operation cancelled");
         process.exit(1);
+      } else {
+        clearInterruptWindow();
       }
       shouldInstall = false;
     }
@@ -504,40 +571,47 @@ async function main(): Promise<void> {
     });
 
     if (p.isCancel(connectRemoteResponse)) {
-      exitCancelled();
-    } else if (connectRemoteResponse) {
-      const remoteUrlResponse = await p.text({
-        message: "Enter the remote repository URL:",
-        placeholder: "https://github.com/username/repo.git",
-        validate: (value: string | undefined) => {
-          if (!value) return "Remote URL is required";
-          if (
-            !value.startsWith("https://github.com/") &&
-            !value.startsWith("git@github.com:") &&
-            !value.startsWith("https://gitlab.com/") &&
-            !value.startsWith("git@gitlab.com:")
-          ) {
-            return "Please enter a valid Github or Gitlab repository URL";
-          }
-        },
-      });
-
-      if (p.isCancel(remoteUrlResponse)) {
-        exitCancelled();
-      } else {
-        const remoteUrl = remoteUrlResponse as string;
-        const pushChoice = await p.select({
-          message: "What would you like to do?",
-          options: [
-            { value: "push", label: "Add remote and push code now", hint: "runs git push" },
-            { value: "connect", label: "Just add remote (don't push yet)", hint: "configure origin only" },
-          ],
-          initialValue: "push",
+      if (shouldExitOnInterrupt()) exitCancelled();
+    } else {
+      clearInterruptWindow();
+      if (connectRemoteResponse) {
+        const remoteUrlResponse = await p.text({
+          message: "Enter the remote repository URL:",
+          placeholder: "https://github.com/username/repo.git",
+          validate: (value: string | undefined) => {
+            if (!value) return "Remote URL is required";
+            if (
+              !value.startsWith("https://github.com/") &&
+              !value.startsWith("git@github.com:") &&
+              !value.startsWith("https://gitlab.com/") &&
+              !value.startsWith("git@gitlab.com:")
+            ) {
+              return "Please enter a valid Github or Gitlab repository URL";
+            }
+          },
         });
 
-        if (p.isCancel(pushChoice)) {
-          exitCancelled();
+        if (p.isCancel(remoteUrlResponse)) {
+          if (shouldExitOnInterrupt()) exitCancelled();
         } else {
+          const remoteUrl = remoteUrlResponse as string;
+          const pushChoiceResponse = await p.select({
+            message: "What would you like to do?",
+            options: [
+              { value: "push", label: "Add remote and push code now", hint: "runs git push" },
+              { value: "connect", label: "Just add remote (don't push yet)", hint: "configure origin only" },
+            ],
+            initialValue: "push",
+          });
+
+          let pushChoice: "push" | "connect";
+          if (p.isCancel(pushChoiceResponse)) {
+            if (shouldExitOnInterrupt()) exitCancelled();
+            pushChoice = "connect";
+          } else {
+            pushChoice = pushChoiceResponse as "push" | "connect";
+          }
+
           const shouldPush = pushChoice === "push";
           s.start(shouldPush ? "Connecting and pushing to remote repository" : "Adding remote repository");
           try {
@@ -598,8 +672,10 @@ async function main(): Promise<void> {
       initialValue: "cursor",
     });
     if (p.isCancel(editorResponse)) {
+      if (shouldExitOnInterrupt()) exitCancelled();
       editorChoice = "skip";
     } else {
+      clearInterruptWindow();
       editorChoice = editorResponse as EditorChoice;
     }
   }
