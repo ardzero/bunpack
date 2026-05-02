@@ -14,7 +14,6 @@ bun create bunpack
 
 ```bash
 bun create bunpack [project-name] [options]
-bunx create-bunpack [project-name] [options]
 ```
 
 `project-name` can be a single segment (`my-cli`) or a **relative path** under the current directory (`./pkgs/my-cli`). Use `.` only in an **empty** directory to scaffold into the current folder.
