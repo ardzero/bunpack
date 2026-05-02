@@ -105,9 +105,9 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string)
     version: "0.0.1",
     license,
     type: "module",
-    bin: { [slug]: "dist/index.js" },
+    bin: { [slug]: "dist/cli.js" },
     files: ["dist", "README.md"],
-    main: "./dist/index.js",
+    main: "./dist/cli.js",
     module: "cli.ts",
     scripts: {
       dev: "bun run cli.ts",
