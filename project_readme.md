@@ -16,11 +16,7 @@ An cli tool built on top of the [bunpack](https://github.com/ardzero/bunpack) st
 
 ## Tech Stack
 
-- [Bun](https://bun.com/)
-- [Typescript](https://www.typescriptlang.org/)
-- [@clack/prompts](https://github.com/bombshell-dev/clack)
-- [execa](https://github.com/sindresorhus/execa)
-- [yargs](https://yargs.js.org/)
+[![Bun](https://img.shields.io/badge/Bun-000000?style=flat&logo=https%3A%2F%2Fraw.githubusercontent.com%2Foven-sh%2Fbun%2Fmain%2Fdocs%2Flogo%2Flogo.svg)](https://bun.com/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![@clack/prompts](https://img.shields.io/badge/%40clack%2Fprompts-CB3837?style=flat&logo=npm&logoColor=white)](https://github.com/bombshell-dev/clack) [![execa](https://img.shields.io/badge/execa-CB3837?style=flat&logo=npm&logoColor=white)](https://github.com/sindresorhus/execa) [![yargs](https://img.shields.io/badge/yargs-CB3837?style=flat&logo=npm&logoColor=white)](https://yargs.js.org/)
 
 ## Socials
 
