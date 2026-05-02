@@ -144,7 +144,7 @@ function isValidAuthorEmail(value: string): boolean {
 }
 
 async function resolveAuthorForProject(templatePackageJsonPath: string): Promise<string> {
-  if (argv.da) {
+  if (argv.da || argv.y) {
     return readAuthorFromTemplatePackageJson(templatePackageJsonPath);
   }
 
@@ -226,7 +226,7 @@ function showHelp(): void {
 
   p.note(
     `${color.cyan("bun create bunpack my-cli")}\n  Create a new project with interactive prompts\n\n` +
-    `${color.cyan("bun create bunpack my-cli -y --da")}\n  Skip prompts: install deps, init git, template author\n\n` +
+    `${color.cyan("bun create bunpack my-cli -y")}\n  Skip prompts: install deps, init git, template author\n\n` +
     `${color.cyan("bun create bunpack ./pkgs/my-cli -y")}\n  Create at a relative path under the current directory\n\n` +
     `${color.cyan("bun create bunpack my-cli --cursor --git")}\n  Create and open in Cursor with git initialized\n\n` +
     `${color.cyan("bun create bunpack my-cli --no-install")}\n  Create without installing dependencies`,
@@ -234,8 +234,8 @@ function showHelp(): void {
   );
 
   console.log(color.bold("\nOptions:"));
-  console.log(`  ${color.cyan("-y, --yes")}              Skip install/git prompts (author still asked unless ${color.cyan("--da")})`);
-  console.log(`  ${color.cyan("--da")}                  Use template author; skip author prompts (also ${color.cyan("-da")})`);
+  console.log(`  ${color.cyan("-y, --yes")}              Skip all prompts; install deps, init git, template author`);
+  console.log(`  ${color.cyan("--da")}                  Template author only; skip author prompts (${color.cyan("-y")} implies this; also ${color.cyan("-da")})`);
   console.log(`  ${color.cyan("--git")}                  Initialize git repository`);
   console.log(`  ${color.cyan("--no-git")}               Skip git initialization`);
   console.log(`  ${color.cyan("--install")}              Install dependencies`);
@@ -258,12 +258,12 @@ const argv = yargs(normalizeCliArgv(hideBin(process.argv)))
   .version(false)
   .option("y", {
     type: "boolean",
-    description: "Skip install/git prompts (use --da to skip author prompts too)",
+    description: "Skip all prompts; install deps, init git, use template author",
     default: false,
   })
   .option("da", {
     type: "boolean",
-    description: "Use template author field; skip author name/email prompts",
+    description: "Use template author; skip author prompts (--yes implies this)",
     default: false,
   })
   .option("git", {
@@ -565,7 +565,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (gitInitialized) {
+  if (gitInitialized && !argv.y) {
     const connectRemoteResponse = await p.confirm({
       message: "Connect to a remote repository?",
       initialValue: false,
