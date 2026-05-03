@@ -11,7 +11,7 @@ const workflowConfig = {
         "README.md",
         ".github/workflows/publish-package.yml"
     ],
-    nodeVersion: "20",
+    nodeVersion: "24",
     workflowFilename: "publish-package.yml",
     environmentName: "npm",
 }
