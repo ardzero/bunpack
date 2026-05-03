@@ -13,12 +13,14 @@ An opinionated base template for creating quick CLI tools with Bun and TypeScrip
 ## Usage
 
 ```bash
-bun create bunpack
+bun create bunpack@latest
 ```
 
 ```bash
-bun create bunpack [project-name] [options]
+bun create bunpack@latest [project-name] [options]
 ```
+
+> replace bun with `npm` if you're using npm
 
 `project-name` can be a single segment (`my-cli`) or a **relative path** under the current directory (`./pkgs/my-cli`). Use `.` only in an **empty** directory to scaffold into the current folder.
 
