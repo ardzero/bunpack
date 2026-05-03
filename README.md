@@ -1,3 +1,5 @@
+![bunpack demo](https://i.ibb.co.com/cKRTtHXp/bunpack-demo-optimize.gif)
+
 # create bunpack
 
 An opinionated base template for creating quick CLI tools with Bun and TypeScript and a few helpful utilities.
