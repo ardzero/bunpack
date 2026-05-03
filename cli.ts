@@ -11,7 +11,7 @@ import { hideBin } from "yargs/helpers";
 const REPO_URL = "https://github.com/ardzero/bunpack.git";
 const REPO_LINK_PLACEHOLDER_PREFIX = "https://github.com/ardzero/";
 /** Paths to drop from the cloned template (scaffold-only or unwanted in new projects). */
-const PATHS_TO_REMOVE: string[] = ["dist", ".github"];
+const PATHS_TO_REMOVE: string[] = ["dist", ".github", ".vscode"];
 
 /** How the generated project's entry CLI and installer-derived reference files are laid out (prompt default: examples-only). */
 type CliScaffoldMode = "examples-only" | "boilerplate-only" | "examples-and-boilerplate" | "empty";
