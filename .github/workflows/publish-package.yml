@@ -53,18 +53,35 @@ jobs:
           PUBLISHED=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
           if [ "$PUBLISHED" = "$PKG_VERSION" ]; then
             echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Registry already has ${PKG_NAME}@${PKG_VERSION}. The publish step will be skipped (not an error)."
           else
             echo "already_published=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to npm (Trusted Publisher OIDC)
+        id: npm_publish
         if: steps.version_check.outputs.already_published == 'false'
         run: npm publish --provenance
 
       - name: Publish summary
+        if: always() && steps.version_check.outcome == 'success'
         run: |
+          NAME="${{ steps.version_check.outputs.name }}"
+          VERSION="${{ steps.version_check.outputs.version }}"
+
           if [ "${{ steps.version_check.outputs.already_published }}" = "true" ]; then
-            echo "Skipping publish: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }} already exists on npm."
-          else
-            echo "Published: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }}"
+            echo "::notice::Skipped npm publish — $NAME@$VERSION is already published on the registry."
+          elif [ "${{ steps.npm_publish.outcome }}" = "success" ]; then
+            echo "::notice::Published $NAME@$VERSION to npm."
+          elif [ "${{ steps.npm_publish.outcome }}" = "failure" ]; then
+            echo "::error::npm publish failed for $NAME@$VERSION."
+            echo ""
+            echo "If this looks like auth / OIDC / Trusted Publisher:"
+            echo "  • npm → package → Trusted Publisher: GitHub org/user, repo, workflow filename must match publish-package.yml, environment must match npm."
+            echo "  • GitHub repo → Settings → Environments: create environment \"npm\" if missing."
+            echo "  • This workflow must keep permissions.id-token: write (OIDC)."
+            echo ""
+            echo "See PUBLISH_GUIDE.md (CI/CD section). Full error output is in the publish step log above."
+          elif [ "${{ steps.npm_publish.outcome }}" = "skipped" ]; then
+            echo "::notice::Publish step was skipped (see version check log)."
           fi
