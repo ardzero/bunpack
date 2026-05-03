@@ -15,7 +15,7 @@ const PATHS_TO_REMOVE: string[] = ["cli.ts", "dist"];
 
 const INTRO_TITLE = color.bgMagenta(color.black(" create-bunpack "));
 
-/** Clack: use `cancel()` then exit for Ctrl+C / prompt cancellation (see @clack/prompts README). */
+/** Clack: use `cancel()` then exit when the user aborts a non-text prompt (see @clack/prompts README). */
 const exitCancelled = (message = "Operation cancelled"): void => {
   p.cancel(message);
   process.exit(0);
@@ -207,9 +207,22 @@ function isValidAuthorEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+/** Email from an npm-style author string `Name <email@host>`, if present and valid. */
+function emailFromTemplateAuthor(templateAuthor: string): string | undefined {
+  const m = templateAuthor.match(/<([^>]+)>\s*$/);
+  const raw = m?.[1];
+  if (raw == null) return undefined;
+  const e = raw.trim();
+  return isValidAuthorEmail(e) ? e : undefined;
+}
+
+const DEFAULT_NEW_PROJECT_PATH = "my-cli";
+
 async function resolveAuthorForProject(templatePackageJsonPath: string): Promise<string> {
+  const templateAuthor = readAuthorFromTemplatePackageJson(templatePackageJsonPath);
+
   if (argv.da || argv.y) {
-    return readAuthorFromTemplatePackageJson(templatePackageJsonPath);
+    return templateAuthor;
   }
 
   const authorName = await p.text({
@@ -217,7 +230,10 @@ async function resolveAuthorForProject(templatePackageJsonPath: string): Promise
     placeholder: "Ada Lovelace",
     validate: (v) => (!v?.trim() ? "Name is required" : undefined),
   });
-  if (p.isCancel(authorName)) exitCancelled();
+  if (p.isCancel(authorName)) {
+    p.log.info("Author name skipped — using template package.json author.");
+    return templateAuthor;
+  }
 
   const authorEmail = await p.text({
     message: "Author email",
@@ -227,7 +243,17 @@ async function resolveAuthorForProject(templatePackageJsonPath: string): Promise
       if (!isValidAuthorEmail(v)) return "Enter a valid email address";
     },
   });
-  if (p.isCancel(authorEmail)) exitCancelled();
+  if (p.isCancel(authorEmail)) {
+    const name = (authorName as string).trim();
+    const fallbackEmail = emailFromTemplateAuthor(templateAuthor);
+    p.log.info(
+      fallbackEmail
+        ? "Author email skipped — using email from template author."
+        : "Author email skipped — using name only (no email in template).",
+    );
+    if (fallbackEmail) return `${name} <${fallbackEmail}>`;
+    return name;
+  }
 
   return `${(authorName as string).trim()} <${(authorEmail as string).trim()}>`;
 }
@@ -271,7 +297,7 @@ function validateProjectName(name: string | undefined): string | undefined {
 async function promptForProjectName(): Promise<string> {
   const response = await p.text({
     message: "Where should we create your new project?",
-    placeholder: "./pkgs/my-cli",
+    placeholder: DEFAULT_NEW_PROJECT_PATH,
     validate: validateProjectName,
   });
 
@@ -670,7 +696,7 @@ async function main(): Promise<void> {
       });
 
       if (p.isCancel(remoteUrlResponse)) {
-        exitCancelled();
+        p.log.info("Remote URL skipped — add a remote later with: git remote add origin <url>");
       } else {
         const remoteUrl = remoteUrlResponse as string;
         const pushChoice = await p.select({

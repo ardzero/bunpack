@@ -22,7 +22,7 @@ bun -v #should look like 1.x.x
 
 ---
 
-## 2. One-time: log in to npm
+## 2. Log in to npm
 
 ```bash
 npm login
@@ -135,13 +135,11 @@ npx create-bunpack@latest --help
 
 ## 8. Useful npm commands
 
-
 | Goal                                                 | Command                                                            |
 | ---------------------------------------------------- | ------------------------------------------------------------------ |
 | See what would ship                                  | `npm pack --dry-run`                                               |
 | Deprecate a bad version (keeps installs possible)    | `npm deprecate create-bunpack@0.0.1 "reason"`                      |
 | Yank latest tag only (discouraged; prefer deprecate) | Read [unpublish policy](https://docs.npmjs.com/policies/unpublish) |
-
 
 Avoid `npm unpublish` except in narrow cases; npm’s policy restricts removing versions others may depend on.
 
@@ -171,7 +169,6 @@ Ensure `.npmrc` in CI contains the registry line npm documents for token auth (o
 
 ## 10. Troubleshooting
 
-
 | Issue                                 | What to try                                                                  |
 | ------------------------------------- | ---------------------------------------------------------------------------- |
 | `E403` / “You do not have permission” | Wrong user (`npm whoami`), or name owned by someone else.                    |
@@ -179,7 +176,6 @@ Ensure `.npmrc` in CI contains the registry line npm documents for token auth (o
 | `prepublishOnly` fails                | Run `bun run build` locally and read the error; fix TypeScript/build issues. |
 | `ENOENT` on `dist/cli.js`             | Run `bun run build`; confirm `dist/cli.js` exists before publish.            |
 | OTP errors                            | `npm publish --otp=...` with a fresh code.                                   |
-
 
 ---
 
@@ -192,4 +188,3 @@ Ensure `.npmrc` in CI contains the registry line npm documents for token auth (o
 5. `npm version patch` (or manual version bump)
 6. `npm publish` (+ `--otp` if required)
 7. `npx create-bunpack@latest --help` → smoke test
-
