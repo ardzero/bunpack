@@ -11,7 +11,23 @@ import { hideBin } from "yargs/helpers";
 const REPO_URL = "https://github.com/ardzero/bunpack.git";
 const REPO_LINK_PLACEHOLDER_PREFIX = "https://github.com/ardzero/";
 /** Paths to drop from the cloned template (scaffold-only or unwanted in new projects). */
-const PATHS_TO_REMOVE: string[] = ["cli.ts", "dist"];
+const PATHS_TO_REMOVE: string[] = ["dist", ".github"];
+
+/** Replace template `cli.ts` (create-bunpack installer) with `boilerplate.ts`, then remove boilerplate. */
+function replaceCliWithBoilerplate(targetDirRelative: string): void {
+  const root = resolve(process.cwd(), targetDirRelative);
+  const boilerplatePath = join(root, "boilerplate.ts");
+  const cliPath = join(root, "cli.ts");
+  if (!existsSync(boilerplatePath)) {
+    throw new Error("Template is missing boilerplate.ts — cannot scaffold entry CLI.");
+  }
+  const source = readFileSync(boilerplatePath, "utf8");
+  if (existsSync(cliPath)) {
+    rmSync(cliPath, { force: true });
+  }
+  writeFileSync(cliPath, source, "utf8");
+  rmSync(boilerplatePath, { force: true });
+}
 
 const INTRO_TITLE = color.bgMagenta(color.black(" create-bunpack "));
 
@@ -498,6 +514,8 @@ async function main(): Promise<void> {
     if (existsSync(gitPath)) {
       rmSync(gitPath, { recursive: true, force: true });
     }
+
+    replaceCliWithBoilerplate(targetDir);
 
     for (const pathToRemove of PATHS_TO_REMOVE) {
       const fullPath = resolve(process.cwd(), targetDir, pathToRemove);
