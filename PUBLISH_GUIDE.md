@@ -192,12 +192,43 @@ Go to setting tab of your npm package, open **Trusted Publisher** and use:
 - **Publisher**: `GitHub Actions`
 - **Organization or user**: `yourGithubUserName` (or your actual repo owner if changed)
 - **Repository**: `yourRepoName` (or your actual repo name if changed)
-- **Workflow filename**: `publish-npm.yml` (filename only, not full path)
+- **Workflow filename**: `publish-package.yml` (filename only, not full path — must match `workflowFilename` in `publish-workflow-gen.ts`)
 - **Environment name**: `npm` (must match `environment: npm` on the job)
 
 Then click **Set up connection**.
 
 > **Optional:** Create a GitHub **Environment** named `npm` under repo **Settings → Environments** if it does not exist yet (required reviewers / branch rules are optional).
+
+---
+
+## 2) Generating the GitHub workflow YAML
+
+Bunpack provides a helpful utility file `publish-workflow-gen.ts` to auto generate the github workflow.
+
+You can run it by running the command below from package project/folder root:
+
+```bash
+bun run gen:publish-workflow
+```
+
+> (equivalent to `bun run ./publish-workflow-gen.ts`.)
+
+> **⚠️ important:**  
+> You must rerun the workflow generator if you change **any** field in the workflow config in `publish-workflow-gen.ts` or update your `package.json` (such as `name`, `version`, or any other field that might impact the workflow logic).
+
+### Configs you may want to change
+
+Edit only `workflowConfig` in `publish-workflow-gen.ts`:
+
+| Field              | Purpose                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `workflowName`     | Workflow title (defaults to `Publish ${package.json name} to npm`)                                                            |
+| `watchBranches`    | Branches that trigger on push (e.g. `main`)                                                                                   |
+| `watchPaths`       | Path/files that trigger the worflow when changed; the workflow file path is **appended automatically** as the **last** entry  |
+| `nodeVersion`      | Passed to `actions/setup-node`                                                                                                |
+| `environmentName`  | GitHub job `environment:` and npm Trusted Publisher **Environment name**                                                      |
+| `workflowDir`      | Output directory (default `.github/workflows`)                                                                                |
+| `workflowFilename` | Output filename (default `publish-package.yml`) — **must match** the workflow filename you configure in npm Trusted Publisher |
 
 ---
 
@@ -233,7 +264,7 @@ git push
 
 - `id-token: write` is mandatory. Without it, Trusted Publisher auth fails.
 - Trusted Publisher metadata must match exactly (owner/repo/workflow filename and environment if used).
-- `workflow filename` in npm is only the file name (`publish-npm.yml`), not `.github/workflows/publish-npm.yml`.
+- `workflow filename` in npm is only the file name (`publish-package.yml`), not `.github/workflows/publish-package.yml`.
 - If repo ownership changes (transfer/fork/rename), you must update Trusted Publisher config in npm.
 - Keep `prepublishOnly` intact (`bun run build`), otherwise CI may publish stale or missing `dist/`.
 - `npm publish --provenance` needs GitHub-hosted runners + OIDC; avoid replacing with self-hosted until you validate provenance flow.
@@ -260,8 +291,8 @@ git push
 
 ## CI/CD Quick checklist
 
-1. `.github/workflows/publish-npm.yml` exists and is committed.
-2. npm Trusted Publisher is configured for `ardzero` / `bunpack` / `publish-npm.yml` with environment `npm`, and GitHub has an environment named `npm`.
+1. `.github/workflows/publish-package.yml` exists and is committed (regenerate with `bun run gen:publish-workflow` after editing `publish-workflow-gen.ts`).
+2. npm Trusted Publisher is configured for your GitHub owner / repo / `publish-package.yml` with environment `npm`, and GitHub has an environment named `npm`.
 3. Workflow has `permissions.id-token: write`.
 4. `package.json` version is bumped to an unpublished version.
 5. Commit pushed to `main` (or manual dispatch run triggered).
