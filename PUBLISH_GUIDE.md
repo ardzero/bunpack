@@ -174,3 +174,170 @@ Avoid `npm unpublish` except in narrow cases; npm’s policy restricts removing 
 ---
 
 # Publishing using github workflow CI/CD
+
+Use CI/CD when you want npm releases from `main` without sharing personal npm credentials.
+This setup uses **npm Trusted Publisher (OIDC)**, not `NPM_TOKEN`.
+
+---
+
+## 1) Create the GitHub workflow
+
+Create `/.github/workflows/publish-npm.yml` with:
+
+```yaml
+name: Publish create-bunpack to npm
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "cli.ts"
+      - "package.json"
+      - "bun.lock"
+      - "README.md"
+      - ".github/workflows/publish-npm.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Publish package
+    runs-on: ubuntu-latest
+    environment: npm
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Upgrade npm to latest
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Check package/version publish status
+        id: version_check
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+          PUBLISHED=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
+          if [ "$PUBLISHED" = "$PKG_VERSION" ]; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm (Trusted Publisher OIDC)
+        if: steps.version_check.outputs.already_published == 'false'
+        run: npm publish --provenance
+
+      - name: Publish summary
+        run: |
+          if [ "${{ steps.version_check.outputs.already_published }}" = "true" ]; then
+            echo "Skipping publish: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }} already exists on npm."
+          else
+            echo "Published: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }}"
+          fi
+```
+
+---
+
+## 2) Configure npm Trusted Publisher (UI fields from your screenshot)
+
+In npm package settings, open **Trusted Publisher** and use:
+
+- **Publisher**: `GitHub Actions`
+- **Organization or user**: `ardzero` (or your actual repo owner if changed)
+- **Repository**: `bunpack` (or your actual repo name if changed)
+- **Workflow filename**: `publish-npm.yml` (filename only, not full path)
+- **Environment name**: `npm` (must match `environment: npm` on the job)
+
+Then click **Set up connection**.
+
+Create a GitHub **Environment** named `npm` under repo **Settings → Environments** if it does not exist yet (required reviewers / branch rules are optional).
+
+---
+
+## 3) First CI publish flow
+
+1. Ensure `package.json` version is new (not published already).
+2. Push commit to `main` (or manually trigger `workflow_dispatch` in Actions tab).
+3. Workflow checks npm registry and runs `npm publish` only if that version is not already on the registry. The tarball is built during publish via `prepublishOnly` (`bun run build`) — same pattern as a reference workflow that goes straight to `npm publish` after `bun install`.
+4. Verify with:
+
+```bash
+npm view create-bunpack version
+npx create-bunpack@latest --help
+```
+
+---
+
+## 4) Versioning policy for CI
+
+- CI publish is **version-driven**. If `package.json` version already exists on npm, publish is skipped.
+- Always bump version before merge to `main`:
+
+```bash
+npm version patch --no-git-tag-version
+git add package.json bun.lock
+git commit -m "release: bump create-bunpack to x.y.z"
+git push
+```
+
+---
+
+## 5) Common pitfalls / caveats / warnings (important)
+
+- `id-token: write` is mandatory. Without it, Trusted Publisher auth fails.
+- Trusted Publisher metadata must match exactly (owner/repo/workflow filename and environment if used).
+- `workflow filename` in npm is only the file name (`publish-npm.yml`), not `.github/workflows/publish-npm.yml`.
+- If repo ownership changes (transfer/fork/rename), you must update Trusted Publisher config in npm.
+- Keep `prepublishOnly` intact (`bun run build`), otherwise CI may publish stale or missing `dist/`.
+- `npm publish --provenance` needs GitHub-hosted runners + OIDC; avoid replacing with self-hosted until you validate provenance flow.
+- Avoid path filters that are too narrow; if `package.json` changes are excluded, release won’t trigger.
+- `contents: write` is not needed here (reference used it because a later step `git push`’d wrapper changes). This repo workflow only needs `contents: read` unless you add commit/push steps.
+- CI skips already-published versions by design; that is a safety feature, not a failure.
+
+---
+
+## CI/CD Troubleshooting
+
+| Issue                                               | What to try                                                                                                              |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `403 Forbidden` during CI publish                   | Check Trusted Publisher mapping in npm package settings (owner/repo/workflow/env must match exactly).                    |
+| `No OIDC token` / auth failures                     | Ensure workflow `permissions` has `id-token: write`.                                                                     |
+| Workflow runs but publish step skipped              | Version already exists on npm (`npm view create-bunpack@<version> version`). Bump version and rerun.                     |
+| Workflow never triggered on push                    | Validate `push.branches` and `push.paths` filters include changed files.                                                 |
+| `npm ERR! code E404` for package/version check      | For unpublished versions this is expected; script handles it and continues.                                              |
+| `bun install` fails in CI                           | Fix lockfile / `package.json` mismatch locally, run `bun install`, commit `bun.lock` if it changed, push.                 |
+| Trusted Publisher rejects the run                   | GitHub environment name, workflow file name, repo owner/name must match npm Trusted Publisher fields exactly (`npm` env here). |
+| Package publishes but command fails right away      | Registry propagation delay; retry smoke test after 30-120 seconds.                                                       |
+
+---
+
+## CI/CD Quick checklist
+
+1. `.github/workflows/publish-npm.yml` exists and is committed.
+2. npm Trusted Publisher is configured for `ardzero` / `bunpack` / `publish-npm.yml` with environment `npm`, and GitHub has an environment named `npm`.
+3. Workflow has `permissions.id-token: write`.
+4. `package.json` version is bumped to an unpublished version.
+5. Commit pushed to `main` (or manual dispatch run triggered).
+6. Actions run shows publish step executed (not skipped).
+7. `npm view create-bunpack version` + `npx create-bunpack@latest --help` pass.
