@@ -5,7 +5,7 @@
 An opinionated base template for creating quick CLI tools with Bun and TypeScript and a few helpful utilities.
 Bunpack also include a detailed [Beginner's Publishing guide](./PUBLISH_GUIDE.md) on how to publish your npm package/cli.
 
-> This requires [Bun](https://bun.com/) because it is used as the bundler.
+> This requires [Bun](https://bun.com/) to be installed because it is used as the bundler and ts runner.
 
 ### Project repo: [bunpack](https://github.com/ardzero/bunpack)
 
@@ -22,8 +22,6 @@ bun create bunpack@latest
 ```bash
 bun create bunpack@latest [project-name] [options]
 ```
-
-> replace bun with `npm` if you're using npm
 
 `project-name` can be a single segment (`my-cli`) or a **relative path** under the current directory (`./pkgs/my-cli`). Use `.` only in an **empty** directory to scaffold into the current folder.
 
