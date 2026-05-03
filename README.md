@@ -1,6 +1,7 @@
 # create bunpack
 
 An opinionated base template for creating quick CLI tools with Bun and TypeScript and a few helpful utilities.
+Bunpack also include a detailed [Beginner's Publishing guide](./PUBLISH_GUIDE.md) on how to publish your npm package/cli.
 
 > This requires [Bun](https://bun.com/) because it is used as the bundler.
 

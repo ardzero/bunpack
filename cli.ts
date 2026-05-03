@@ -341,6 +341,36 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string,
   writeFileSync(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
+/** Template repo npm name; PUBLISH_GUIDE.md examples are rewritten to the new project's `package.json` name. */
+const PUBLISH_GUIDE_TEMPLATE_PKG = "create-bunpack";
+
+/**
+ * Rewrites PUBLISH_GUIDE.md so `create-bunpack` matches the scaffolded `package.json` name.
+ * @returns true if the file existed and contained the template package name (substitution applied).
+ */
+function applyPublishGuidePackageName(projectRoot: string, npmPackageSlug: string): boolean {
+  const guidePath = resolve(projectRoot, "PUBLISH_GUIDE.md");
+  if (!existsSync(guidePath)) return false;
+  let content = readFileSync(guidePath, "utf8");
+  if (!content.includes(PUBLISH_GUIDE_TEMPLATE_PKG)) return false;
+
+  content = content.split(PUBLISH_GUIDE_TEMPLATE_PKG).join(npmPackageSlug);
+
+  const scaffoldNoteMarker = "**Scaffold:** Command examples were rewritten";
+  if (!content.includes(scaffoldNoteMarker)) {
+    const firstNl = content.indexOf("\n");
+    if (firstNl !== -1) {
+      const note =
+        `\n\n> ${scaffoldNoteMarker} from the bunpack template to **${npmPackageSlug}** (your \`package.json\` \`name\`). ` +
+        `If the name you publish to npm will differ, search the repo and align this guide, \`publish-workflow-gen.ts\`, and npm Trusted Publisher before releasing.\n`;
+      content = content.slice(0, firstNl) + note + content.slice(firstNl + 1);
+    }
+  }
+
+  writeFileSync(guidePath, content, "utf8");
+  return true;
+}
+
 function readAuthorFromTemplatePackageJson(templatePackageJsonPath: string): string {
   if (!existsSync(templatePackageJsonPath)) return "";
   try {
@@ -689,9 +719,16 @@ async function main(): Promise<void> {
     }
 
     applyProjectReadme(projectRoot, nameForPackage, authorForProject);
+    const npmPackageSlug = slugifyPackageName(nameForPackage);
     applyNewProjectPackageJson(projectRoot, nameForPackage, authorForProject);
+    const publishGuideRetargeted = applyPublishGuidePackageName(projectRoot, npmPackageSlug);
 
     s.stop("Cleaned up");
+    if (publishGuideRetargeted) {
+      p.log.warn(
+        `PUBLISH_GUIDE.md examples now use "${npmPackageSlug}". If that is not your real npm package name, update the guide and run ${color.cyan("bun run gen:publish-workflow")} after editing ${color.cyan("publish-workflow-gen.ts")}.`,
+      );
+    }
   } catch (error: unknown) {
     s.error("Failed to clean up");
     p.log.warn("Could not remove some directories");

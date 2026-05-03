@@ -1,14 +1,13 @@
-# Publishing `create-bunpack` to npm
+# Publishing your package to npm
 
 This package is published as `create-bunpack`.
 
-> when a package is published with `create-` prefix user can use it like `bun create [suffix]`
+> Change the package name with your own package name.
+> Note: when a package is published with `create-` prefix user can use it like `bun create [suffix]`
 
-`prepublishOnly` in `package.json` runs `bun run build`, so a publish always rebuilds `dist/` before the tarball is created.
+> #### ⚠️ Important: The guide below applyies to any cli/package bootstraped using [bunpack](https://github.com/ardzero/bunpack), if you're trying use this as reference for other projects templates, some changes are required
 
 # Publishing Locally (recommended for first deployment)
-
----
 
 ## 1. Prerequisites
 

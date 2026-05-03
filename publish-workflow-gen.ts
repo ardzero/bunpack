@@ -1,3 +1,6 @@
+// workflow generator, check out the guide below for more details
+// https://github.com/ardzero/bunpack/blob/main/PUBLISH_GUIDE.md#then-setup-publishing-using-github-workflow-cicd
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import packageJson from "./package.json";
@@ -5,78 +8,78 @@ import picocolors from "picocolors";
 
 /** Edit this object, then run `bun run publish-workflow-gen.ts` (or `bun run gen:publish-workflow`). */
 const workflowConfig = {
-    workflowName: `Publish ${packageJson.name} to npm`,
-    watchBranches: ["main"],
-    //  Paths that trigger the workflow; 
-    watchPaths: [
-        "cli.ts",
-        "package.json",
-        "bun.lock",
-        "README.md",
-        // workflow file path is auto appended
-    ],
-    nodeVersion: "24",
-    environmentName: "npm",
-    // Directory only (no trailing slash required).
-    workflowDir: ".github/workflows",
-    workflowFilename: "publish-package.yml",
+  workflowName: `Publish ${packageJson.name} to npm`,
+  watchBranches: ["main"],
+  //  Paths that trigger the workflow; 
+  watchPaths: [
+    "cli.ts",
+    "package.json",
+    "bun.lock",
+    "README.md",
+    // workflow file path is auto appended
+  ],
+  nodeVersion: "24",
+  environmentName: "npm",
+  // Directory only (no trailing slash required).
+  workflowDir: ".github/workflows",
+  workflowFilename: "publish-package.yml",
 } as const;
 
 
 
 //* don't edit anything below unless you know what you are doing
 function posixJoin(...segments: string[]): string {
-    return path.posix.join(
-        ...segments.map((s) => s.replace(/\\/g, "/").replace(/\/+$/, "")),
-    );
+  return path.posix.join(
+    ...segments.map((s) => s.replace(/\\/g, "/").replace(/\/+$/, "")),
+  );
 }
 
 function yamlFlowScalar(s: string): string {
-    return JSON.stringify(s);
+  return JSON.stringify(s);
 }
 
 /** Order: folders → .ts → package.json → bun.lock → .md → anything else (workflow path appended separately). */
 function watchPathSortRank(p: string): number {
-    const base = path.posix.basename(p);
-    if (p.endsWith("/") || p.endsWith("/**")) return 0;
-    if (p.endsWith(".ts")) return 1;
-    if (base === "package.json") return 2;
-    if (base === "bun.lock") return 3;
-    if (p.endsWith(".md")) return 4;
-    return 5;
+  const base = path.posix.basename(p);
+  if (p.endsWith("/") || p.endsWith("/**")) return 0;
+  if (p.endsWith(".ts")) return 1;
+  if (base === "package.json") return 2;
+  if (base === "bun.lock") return 3;
+  if (p.endsWith(".md")) return 4;
+  return 5;
 }
 
 function compareWatchPaths(a: string, b: string): number {
-    const d = watchPathSortRank(a) - watchPathSortRank(b);
-    if (d !== 0) return d;
-    return a.localeCompare(b);
+  const d = watchPathSortRank(a) - watchPathSortRank(b);
+  if (d !== 0) return d;
+  return a.localeCompare(b);
 }
 
 function generateWorkflowYaml(): string {
-    const workflowRelativePath = posixJoin(
-        workflowConfig.workflowDir,
-        workflowConfig.workflowFilename,
-    );
-    const otherPaths = [
-        ...new Set(
-            workflowConfig.watchPaths.filter((p) => p !== workflowRelativePath),
-        ),
-    ].sort(compareWatchPaths);
-    const watchPaths = [...otherPaths, workflowRelativePath];
+  const workflowRelativePath = posixJoin(
+    workflowConfig.workflowDir,
+    workflowConfig.workflowFilename,
+  );
+  const otherPaths = [
+    ...new Set(
+      workflowConfig.watchPaths.filter((p) => p !== workflowRelativePath),
+    ),
+  ].sort(compareWatchPaths);
+  const watchPaths = [...otherPaths, workflowRelativePath];
 
-    const branchesYaml = workflowConfig.watchBranches
-        .map((b) => `      - ${b}`)
-        .join("\n");
-    const pathsYaml = watchPaths
-        .map((p) => `      - ${yamlFlowScalar(p)}`)
-        .join("\n");
+  const branchesYaml = workflowConfig.watchBranches
+    .map((b) => `      - ${b}`)
+    .join("\n");
+  const pathsYaml = watchPaths
+    .map((p) => `      - ${yamlFlowScalar(p)}`)
+    .join("\n");
 
-    const name = workflowConfig.workflowName;
-    const env = workflowConfig.environmentName;
-    const node = workflowConfig.nodeVersion;
-    const wfFile = workflowConfig.workflowFilename;
+  const name = workflowConfig.workflowName;
+  const env = workflowConfig.environmentName;
+  const node = workflowConfig.nodeVersion;
+  const wfFile = workflowConfig.workflowFilename;
 
-    return `name: ${name}
+  return `name: ${name}
 
 on:
   workflow_dispatch:
@@ -163,19 +166,19 @@ jobs:
 }
 
 async function main(): Promise<void> {
-    const cwd = process.cwd();
-    const outPath = path.join(
-        cwd,
-        workflowConfig.workflowDir,
-        workflowConfig.workflowFilename,
-    );
-    await mkdir(path.dirname(outPath), { recursive: true });
-    const yaml = generateWorkflowYaml();
-    await writeFile(outPath, yaml.endsWith("\n") ? yaml : `${yaml}\n`, "utf8");
-    console.log(`Created workflow at: ${picocolors.green(path.relative(cwd, outPath))}`);
+  const cwd = process.cwd();
+  const outPath = path.join(
+    cwd,
+    workflowConfig.workflowDir,
+    workflowConfig.workflowFilename,
+  );
+  await mkdir(path.dirname(outPath), { recursive: true });
+  const yaml = generateWorkflowYaml();
+  await writeFile(outPath, yaml.endsWith("\n") ? yaml : `${yaml}\n`, "utf8");
+  console.log(`Created workflow at: ${picocolors.green(path.relative(cwd, outPath))}`);
 }
 
 main().catch((err: unknown) => {
-    console.error(err);
-    process.exit(1);
+  console.error(err);
+  process.exit(1);
 });
