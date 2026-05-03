@@ -173,105 +173,31 @@ Avoid `npm unpublish` except in narrow cases; npm’s policy restricts removing 
 
 ---
 
-# Publishing using github workflow CI/CD
+# Then setup publishing using github workflow CI/CD
 
-Use CI/CD when you want npm releases from `main` without sharing personal npm credentials.
-This setup uses **npm Trusted Publisher (OIDC)**, not `NPM_TOKEN`.
+UCI/CD plublishes you package to npm when you push code to github repo's `main` branch, so you don't have to manually go throuhgh all the steps of publishing locally.
 
----
+### This setup uses **npm Trusted Publisher (OIDC)**, not `NPM_TOKEN`.
 
-## 1) Create the GitHub workflow
-
-Create `/.github/workflows/publish-npm.yml` with:
-
-```yaml
-name: Publish create-bunpack to npm
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "cli.ts"
-      - "package.json"
-      - "bun.lock"
-      - "README.md"
-      - ".github/workflows/publish-npm.yml"
-
-permissions:
-  id-token: write
-  contents: read
-
-jobs:
-  publish:
-    name: Publish package
-    runs-on: ubuntu-latest
-    environment: npm
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Upgrade npm to latest
-        run: npm install -g npm@latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Check package/version publish status
-        id: version_check
-        run: |
-          PKG_NAME=$(node -p "require('./package.json').name")
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
-          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
-
-          PUBLISHED=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
-          if [ "$PUBLISHED" = "$PKG_VERSION" ]; then
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish to npm (Trusted Publisher OIDC)
-        if: steps.version_check.outputs.already_published == 'false'
-        run: npm publish --provenance
-
-      - name: Publish summary
-        run: |
-          if [ "${{ steps.version_check.outputs.already_published }}" = "true" ]; then
-            echo "Skipping publish: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }} already exists on npm."
-          else
-            echo "Published: ${{ steps.version_check.outputs.name }}@${{ steps.version_check.outputs.version }}"
-          fi
-```
+> In order to to setup **npm Trusted Publisher (OIDC)** the pkg needs to be published on npm first, so do the first publish locally then follow the guide below to setup the CI/CD
 
 ---
 
-## 2) Configure npm Trusted Publisher (UI fields from your screenshot)
+## 1) Setup npm Trusted Publisher
 
-In npm package settings, open **Trusted Publisher** and use:
+![npm trusted publisher config ui screenshot](https://i.ibb.co.com/mV3JBkvN/image.png)
+
+Go to setting tab of your npm package, open **Trusted Publisher** and use:
 
 - **Publisher**: `GitHub Actions`
-- **Organization or user**: `ardzero` (or your actual repo owner if changed)
-- **Repository**: `bunpack` (or your actual repo name if changed)
+- **Organization or user**: `yourGithubUserName` (or your actual repo owner if changed)
+- **Repository**: `yourRepoName` (or your actual repo name if changed)
 - **Workflow filename**: `publish-npm.yml` (filename only, not full path)
 - **Environment name**: `npm` (must match `environment: npm` on the job)
 
 Then click **Set up connection**.
 
-Create a GitHub **Environment** named `npm` under repo **Settings → Environments** if it does not exist yet (required reviewers / branch rules are optional).
+> **Optional:** Create a GitHub **Environment** named `npm` under repo **Settings → Environments** if it does not exist yet (required reviewers / branch rules are optional).
 
 ---
 
@@ -319,16 +245,16 @@ git push
 
 ## CI/CD Troubleshooting
 
-| Issue                                               | What to try                                                                                                              |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `403 Forbidden` during CI publish                   | Check Trusted Publisher mapping in npm package settings (owner/repo/workflow/env must match exactly).                    |
-| `No OIDC token` / auth failures                     | Ensure workflow `permissions` has `id-token: write`.                                                                     |
-| Workflow runs but publish step skipped              | Version already exists on npm (`npm view create-bunpack@<version> version`). Bump version and rerun.                     |
-| Workflow never triggered on push                    | Validate `push.branches` and `push.paths` filters include changed files.                                                 |
-| `npm ERR! code E404` for package/version check      | For unpublished versions this is expected; script handles it and continues.                                              |
-| `bun install` fails in CI                           | Fix lockfile / `package.json` mismatch locally, run `bun install`, commit `bun.lock` if it changed, push.                 |
-| Trusted Publisher rejects the run                   | GitHub environment name, workflow file name, repo owner/name must match npm Trusted Publisher fields exactly (`npm` env here). |
-| Package publishes but command fails right away      | Registry propagation delay; retry smoke test after 30-120 seconds.                                                       |
+| Issue                                          | What to try                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `403 Forbidden` during CI publish              | Check Trusted Publisher mapping in npm package settings (owner/repo/workflow/env must match exactly).                          |
+| `No OIDC token` / auth failures                | Ensure workflow `permissions` has `id-token: write`.                                                                           |
+| Workflow runs but publish step skipped         | Version already exists on npm (`npm view create-bunpack@<version> version`). Bump version and rerun.                           |
+| Workflow never triggered on push               | Validate `push.branches` and `push.paths` filters include changed files.                                                       |
+| `npm ERR! code E404` for package/version check | For unpublished versions this is expected; script handles it and continues.                                                    |
+| `bun install` fails in CI                      | Fix lockfile / `package.json` mismatch locally, run `bun install`, commit `bun.lock` if it changed, push.                      |
+| Trusted Publisher rejects the run              | GitHub environment name, workflow file name, repo owner/name must match npm Trusted Publisher fields exactly (`npm` env here). |
+| Package publishes but command fails right away | Registry propagation delay; retry smoke test after 30-120 seconds.                                                             |
 
 ---
 

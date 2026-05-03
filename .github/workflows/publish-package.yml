@@ -10,7 +10,7 @@ on:
       - "package.json"
       - "bun.lock"
       - "README.md"
-      - ".github/workflows/publish-npm.yml"
+      - ".github/workflows/publish-package.yml"
 
 permissions:
   id-token: write
