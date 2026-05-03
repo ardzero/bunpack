@@ -19,8 +19,8 @@ This package is published as `create-bunpack`.
 Check:
 
 ```bash
-node -v #should look like v25.x.x
-npm -v #should look like 11.x.x
+node -v #should look like v2x.x.x
+npm -v #should look like 1x.x.x
 bun -v #should look like 1.x.x
 ```
 
@@ -185,7 +185,7 @@ UCI/CD plublishes you package to npm when you push code to github repo's `main` 
 
 ## 1) Setup npm Trusted Publisher
 
-![npm trusted publisher config ui screenshot](https://i.ibb.co.com/mV3JBkvN/image.png)
+![npm trusted publisher config ui screenshot](https://i.ibb.co.com/dsj55GPJ/image.png)
 
 Go to setting tab of your npm package, open **Trusted Publisher** and use:
 
@@ -236,12 +236,14 @@ Edit only `workflowConfig` in `publish-workflow-gen.ts`:
 
 1. Ensure `package.json` version is new (not published already).
 2. Push commit to `main` (or manually trigger `workflow_dispatch` in Actions tab).
-3. Workflow checks npm registry and runs `npm publish` only if that version is not already on the registry. The tarball is built during publish via `prepublishOnly` (`bun run build`) — same pattern as a reference workflow that goes straight to `npm publish` after `bun install`.
-4. Verify with:
+3. Workflow checks npm registry and runs `npm publish` only if that version is not already on the registry. Your workflow run should look something like this:
+   ![successful workflow run ui screenshot](https://i.ibb.co.com/3ywgch8r/image.png)
+
+### Now Verify with:
 
 ```bash
 npm view create-bunpack version
-npx create-bunpack@latest --help
+bunx create-bunpack@latest --help
 ```
 
 ---
