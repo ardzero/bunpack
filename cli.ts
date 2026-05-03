@@ -138,12 +138,12 @@ async function promptCliScaffoldMode(): Promise<CliScaffoldMode> {
       {
         value: "boilerplate-only",
         label: "Boilerplate only",
-        hint: "starter cli.ts from boilerplate.ts",
+        hint: "cli.ts generated with boilerplate code",
       },
       {
         value: "examples-and-boilerplate",
         label: "Examples + Boilerplate",
-        hint: "installer → reference-cli-code.ts; boilerplate → cli.ts",
+        hint: "reference-cli-code.ts + boilerplate code in cli.ts",
       },
       {
         value: "empty",

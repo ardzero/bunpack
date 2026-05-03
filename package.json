@@ -1,6 +1,6 @@
 {
   "name": "create-bunpack",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An opinionated base template for creating quick cli tools with Bun and typescript and a few helpful utilities.",
   "keywords": [
     "bunpack",
@@ -44,6 +44,7 @@
     "@types/yargs": "^17.0.35",
     "execa": "^9.6.1",
     "picocolors": "^1.1.1",
-    "yargs": "^18.0.0"
+    "yargs": "^18.0.0",
+    "@bomb.sh/tab": "^0.0.15"
   }
 }
