@@ -34,7 +34,8 @@
   "scripts": {
     "dev": "bun run cli.ts",
     "build": "bun build cli.ts --outdir dist --target node --minify --sourcemap=external",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "gen:publish-workflow": "bun run publish-workflow-gen.ts"
   },
   "devDependencies": {
     "@clack/prompts": "^1.3.0",
