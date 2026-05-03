@@ -1,8 +1,12 @@
 # Publishing `create-bunpack` to npm
 
-This package is published as `**create-bunpack**`.
+This package is published as `create-bunpack`.
+
+> when a package is published with `create-` prefix user can use it like `bun create [suffix]`
 
 `prepublishOnly` in `package.json` runs `bun run build`, so a publish always rebuilds `dist/` before the tarball is created.
+
+# Publishing Locally (recommended for first deployment)
 
 ---
 
@@ -145,28 +149,6 @@ Avoid `npm unpublish` except in narrow cases; npm’s policy restricts removing 
 
 ---
 
-## 9. CI / automation (optional)
-
-For GitHub Actions or other CI, use an **Automation** or **Granular access token** from npm (Account → Access Tokens), store it as a secret (e.g. `NPM_TOKEN`), and publish with:
-
-```bash
-npm publish --provenance
-```
-
-(`--provenance` is optional; it links the package to the build on supported CI.)
-
-Example pattern:
-
-```yaml
-- run: npm publish
-  env:
-    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
-
-Ensure `.npmrc` in CI contains the registry line npm documents for token auth (often `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`).
-
----
-
 ## 10. Troubleshooting
 
 | Issue                                 | What to try                                                                  |
@@ -188,3 +170,7 @@ Ensure `.npmrc` in CI contains the registry line npm documents for token auth (o
 5. `npm version patch` (or manual version bump)
 6. `npm publish` (+ `--otp` if required)
 7. `npx create-bunpack@latest --help` → smoke test
+
+---
+
+# Publishing using github workflow CI/CD
