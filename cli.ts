@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
@@ -13,20 +13,152 @@ const REPO_LINK_PLACEHOLDER_PREFIX = "https://github.com/ardzero/";
 /** Paths to drop from the cloned template (scaffold-only or unwanted in new projects). */
 const PATHS_TO_REMOVE: string[] = ["dist", ".github"];
 
-/** Replace template `cli.ts` (create-bunpack installer) with `boilerplate.ts`, then remove boilerplate. */
-function replaceCliWithBoilerplate(targetDirRelative: string): void {
+/** How the generated project's entry CLI and installer-derived reference files are laid out (prompt default: examples-only). */
+type CliScaffoldMode = "examples-only" | "boilerplate-only" | "examples-and-boilerplate" | "empty";
+
+const CLI_SCAFFOLD_DEFAULT: CliScaffoldMode = "examples-only";
+
+/** Stub entrypoint when the user wants no installer reference and no boilerplate starter. */
+const MINIMAL_CLI_SOURCE = `#!/usr/bin/env node
+import color from "picocolors";
+
+console.log(color.green("hello from your cli"));
+`;
+
+const AGENT_REFERENCE_SECTION_MARKER = "# Reference for writing the cli code";
+
+/**
+ * After cloning the template, reshape `cli.ts` / related files before `dist` / `.github` are removed.
+ *
+ * - **Examples only (default):** Remove `boilerplate.ts`. Rename installer `cli.ts` → `reference-cli-code.ts`.
+ *   Write a minimal `cli.ts`. Append AGENT.md guidance so tooling reads `./reference-cli-code.ts` for structure only.
+ * - **Boilerplate only:** Delete installer `cli.ts`. Rename `boilerplate.ts` → `cli.ts`. No reference file; no AGENT.md extra section.
+ * - **Examples + Boilerplate:** Rename installer → `reference-cli-code.ts`, then `boilerplate.ts` → `cli.ts`. Append AGENT.md guidance.
+ * - **Empty:** Delete installer and `boilerplate.ts`. Write minimal `cli.ts` only. No reference file; no AGENT.md extra section.
+ *
+ * All of this runs in the cleanup phase, **before** install prompts and **before** `git init`.
+ */
+function applyCliScaffoldLayout(targetDirRelative: string, mode: CliScaffoldMode): void {
   const root = resolve(process.cwd(), targetDirRelative);
-  const boilerplatePath = join(root, "boilerplate.ts");
   const cliPath = join(root, "cli.ts");
-  if (!existsSync(boilerplatePath)) {
-    throw new Error("Template is missing boilerplate.ts — cannot scaffold entry CLI.");
+  const boilerplatePath = join(root, "boilerplate.ts");
+  const referencePath = join(root, "reference-cli-code.ts");
+
+  const safeRename = (from: string, to: string): void => {
+    if (existsSync(to)) {
+      rmSync(to, { force: true });
+    }
+    renameSync(from, to);
+  };
+
+  /** When installer-derived examples exist on disk, document them for agents. */
+  const appendAgentReferenceIfNeeded = (): void => {
+    appendAgentMdCliReferenceSection(root);
+  };
+
+  switch (mode) {
+    case "examples-only": {
+      if (existsSync(boilerplatePath)) {
+        rmSync(boilerplatePath, { force: true });
+      }
+      if (!existsSync(cliPath)) {
+        throw new Error("Template is missing cli.ts — cannot save installer as reference.");
+      }
+      safeRename(cliPath, referencePath);
+      writeFileSync(cliPath, MINIMAL_CLI_SOURCE, "utf8");
+      appendAgentReferenceIfNeeded();
+      break;
+    }
+    case "boilerplate-only": {
+      if (!existsSync(boilerplatePath)) {
+        throw new Error("Template is missing boilerplate.ts — cannot scaffold boilerplate-only layout.");
+      }
+      if (existsSync(cliPath)) {
+        rmSync(cliPath, { force: true });
+      }
+      safeRename(boilerplatePath, cliPath);
+      break;
+    }
+    case "examples-and-boilerplate": {
+      if (!existsSync(cliPath)) {
+        throw new Error("Template is missing cli.ts — cannot save installer as reference.");
+      }
+      if (!existsSync(boilerplatePath)) {
+        throw new Error("Template is missing boilerplate.ts — cannot scaffold examples + boilerplate layout.");
+      }
+      safeRename(cliPath, referencePath);
+      safeRename(boilerplatePath, cliPath);
+      appendAgentReferenceIfNeeded();
+      break;
+    }
+    case "empty": {
+      if (existsSync(cliPath)) {
+        rmSync(cliPath, { force: true });
+      }
+      if (existsSync(boilerplatePath)) {
+        rmSync(boilerplatePath, { force: true });
+      }
+      writeFileSync(cliPath, MINIMAL_CLI_SOURCE, "utf8");
+      break;
+    }
   }
-  const source = readFileSync(boilerplatePath, "utf8");
-  if (existsSync(cliPath)) {
-    rmSync(cliPath, { force: true });
+}
+
+/** Append Reference-for-CLI section when `reference-cli-code.ts` is kept for structure-only guidance. */
+function appendAgentMdCliReferenceSection(projectRootAbs: string): void {
+  const agentPath = join(projectRootAbs, "AGENT.md");
+  if (!existsSync(agentPath)) {
+    return;
   }
-  writeFileSync(cliPath, source, "utf8");
-  rmSync(boilerplatePath, { force: true });
+  let body = readFileSync(agentPath, "utf8");
+  if (body.includes(AGENT_REFERENCE_SECTION_MARKER)) {
+    return;
+  }
+  const chunk =
+    "\n\n# Reference for writing the cli code\n\n" +
+    "when writing code for the cli read through `./reference-cli-code.ts` first as the reference code for the cli. " +
+    "only reference structure, naming, code formatting, order of things and any utility that is helpful for the user's request. " +
+    "not the functionality of the code.\n";
+  writeFileSync(agentPath, `${body.replace(/\s*$/, "")}${chunk}`, "utf8");
+}
+
+async function promptCliScaffoldMode(): Promise<CliScaffoldMode> {
+  if (argv.y) {
+    return CLI_SCAFFOLD_DEFAULT;
+  }
+
+  const choice = await p.select({
+    message: "How should we set up your project CLI?",
+    options: [
+      {
+        value: "examples-only",
+        label: "Examples only",
+        hint: "reference-cli-code.ts + minimal cli.ts (default)",
+      },
+      {
+        value: "boilerplate-only",
+        label: "Boilerplate only",
+        hint: "starter cli.ts from boilerplate.ts",
+      },
+      {
+        value: "examples-and-boilerplate",
+        label: "Examples + Boilerplate",
+        hint: "installer → reference-cli-code.ts; boilerplate → cli.ts",
+      },
+      {
+        value: "empty",
+        label: "Empty",
+        hint: "minimal one-line cli.ts only",
+      },
+    ],
+    initialValue: CLI_SCAFFOLD_DEFAULT,
+  });
+
+  if (p.isCancel(choice)) {
+    exitCancelled();
+  }
+
+  return choice as CliScaffoldMode;
 }
 
 const INTRO_TITLE = color.bgMagenta(color.black(" create-bunpack "));
@@ -507,6 +639,8 @@ async function main(): Promise<void> {
   const projectRoot = useCurrentDir ? process.cwd() : resolve(process.cwd(), projectName);
   const nameForPackage = basename(useCurrentDir ? projectRoot : projectName);
 
+  const scaffoldMode = await promptCliScaffoldMode();
+
   s.start("Cleaning up");
   try {
     const targetDir = useCurrentDir ? tempDir : projectName;
@@ -515,7 +649,7 @@ async function main(): Promise<void> {
       rmSync(gitPath, { recursive: true, force: true });
     }
 
-    replaceCliWithBoilerplate(targetDir);
+    applyCliScaffoldLayout(targetDir, scaffoldMode);
 
     for (const pathToRemove of PATHS_TO_REMOVE) {
       const fullPath = resolve(process.cwd(), targetDir, pathToRemove);
