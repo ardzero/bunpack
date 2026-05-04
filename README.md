@@ -3,7 +3,7 @@
 # create bunpack
 
 An opinionated base template for creating quick CLI tools with Bun and TypeScript and a few helpful utilities.
-Bunpack also include a detailed [Beginner's Publishing guide](./PUBLISH_GUIDE.md) on how to publish your npm package/cli.
+Bunpack also includes a detailed [Beginner's Publishing guide](./PUBLISH_GUIDE.md) on how to publish your npm package/cli.
 
 > This requires [Bun](https://bun.com/) to be installed because it is used as the bundler and ts runner.
 
@@ -59,7 +59,7 @@ Run `bunx create-bunpack --help` for the same details in the terminal.
 | Command         | Action                                  |
 | :-------------- | :-------------------------------------- |
 | `bun --help`    | Shows Bun’s CLI help                    |
-| `bun dev`       | Run `cli.ts` (same as `bun run cli.ts`) |
+| `bun run dev`   | Run `cli.ts` (same as `bun run cli.ts`) |
 | `bun run build` | Build the published CLI to `./dist/`    |
 
 ## Socials
