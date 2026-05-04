@@ -1,6 +1,6 @@
 {
   "name": "create-bunpack",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "An opinionated base template for creating quick cli tools with Bun and typescript and a few helpful utilities.",
   "keywords": [
     "bunpack",
