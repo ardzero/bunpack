@@ -312,16 +312,19 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string,
   }
   const slug = slugifyPackageName(nameForPackage);
   const license = typeof existing.license === "string" ? existing.license : "MIT";
-  const devDeps = existing.devDependencies;
-  const devDependencies =
-    devDeps && typeof devDeps === "object" && !Array.isArray(devDeps)
-      ? (devDeps as Record<string, string>)
-      : {};
+  const authorTrimmed = author.trim();
+  const authorNext =
+    authorTrimmed !== ""
+      ? authorTrimmed
+      : typeof existing.author === "string"
+        ? existing.author
+        : undefined;
 
   const next: Record<string, unknown> = {
+    ...existing,
     name: slug,
     description: "A CLI tool built with Bun and TypeScript.",
-    author: author.trim() || undefined,
+    author: authorNext,
     version: "0.0.1",
     license,
     type: "module",
@@ -329,15 +332,11 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string,
     files: ["dist", "README.md"],
     main: "./dist/cli.js",
     module: "cli.ts",
-    scripts: {
-      dev: "bun run cli.ts",
-      build: "bun build cli.ts --outdir dist --target node --minify --sourcemap=external",
-      prepublishOnly: "bun run build",
-      "gen:publish-workflow": "bun run publish-workflow-gen.ts",
-    },
-    keywords: ["cli", "bun", "typescript"],
-    devDependencies,
   };
+
+  // Never rewrite these from the template clone — avoids empty devDeps + install reinferring `dependencies`.
+  next.scripts = existing.scripts;
+  next.devDependencies = existing.devDependencies;
 
   writeFileSync(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`);
 }
