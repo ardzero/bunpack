@@ -341,6 +341,37 @@ function applyNewProjectPackageJson(projectRoot: string, nameForPackage: string,
   writeFileSync(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
+/** Remove npm repo metadata copied from the template when the project has no remote yet. */
+function stripPackageJsonRepoFields(projectRoot: string): void {
+  const packageJsonPath = resolve(projectRoot, "package.json");
+  if (!existsSync(packageJsonPath)) return;
+  let pkg: Record<string, unknown>;
+  try {
+    pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  let changed = false;
+  for (const key of ["homepage", "bugs", "repository"] as const) {
+    if (key in pkg) {
+      delete pkg[key];
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  }
+}
+
+async function directoryHasGitOrigin(cwd: string): Promise<boolean> {
+  try {
+    await execa("git", ["remote", "get-url", "origin"], { cwd, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Template repo npm name; PUBLISH_GUIDE.md examples are rewritten to the new project's `package.json` name. */
 const PUBLISH_GUIDE_TEMPLATE_PKG = "create-bunpack";
 
@@ -905,6 +936,11 @@ async function main(): Promise<void> {
         }
       }
     }
+  }
+
+  const hasGitOrigin = gitInitialized && (await directoryHasGitOrigin(gitCwd));
+  if (!hasGitOrigin) {
+    stripPackageJsonRepoFields(projectRoot);
   }
 
   let editorChoice: EditorChoice = null;
