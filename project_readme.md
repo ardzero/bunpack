@@ -12,6 +12,10 @@ An cli tool built on top of the [bunpack](https://github.com/ardzero/bunpack) st
 
 > just replace `bun` with any package manager you're using
 
+#### Dependency updates
+
+This project ships with a [Renovate](https://docs.renovatebot.com/) config (`renovate.json`) that sends weekly grouped update PRs, waits 3 days after each release, and pins GitHub Actions to commit SHAs. To turn it on for free, install the [Renovate GitHub App](https://github.com/apps/renovate) on your repo, which is free for open source. Non-major updates only automerge after CI checks pass, so without a CI workflow every PR waits for you to review it.
+
 ## Tech Stack
 
 [![Bun](https://img.shields.io/badge/Bun-000000?style=flat&logo=bun&logoColor=white)](https://bun.com/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![@clack/prompts](https://img.shields.io/badge/%40clack%2Fprompts-CB3837?style=flat&logo=npm&logoColor=white)](https://github.com/bombshell-dev/clack) [![execa](https://img.shields.io/badge/execa-CB3837?style=flat&logo=npm&logoColor=white)](https://github.com/sindresorhus/execa) [![yargs](https://img.shields.io/badge/yargs-CB3837?style=flat&logo=npm&logoColor=white)](https://yargs.js.org/)

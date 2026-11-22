@@ -35,15 +35,17 @@
     "dev": "bun run cli.ts",
     "build": "bun build cli.ts --outdir dist --target node --minify --sourcemap=external",
     "prepublishOnly": "bun run build",
+    "typecheck": "tsc --noEmit",
     "gen:publish-workflow": "bun run publish-workflow-gen.ts"
   },
   "devDependencies": {
     "@clack/prompts": "^1.8.1",
-    "@types/bun": "latest",
-    "@types/node": "^25.9.6",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.5",
     "@types/yargs": "^17.0.35",
-    "execa": "^9.6.1",
+    "execa": "^10.2.1",
     "picocolors": "^1.1.1",
-    "yargs": "^18.1.0"
+    "typescript": "^7.0.2",
+    "yargs": "^18.2.0"
   }
 }
