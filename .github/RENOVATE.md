@@ -11,7 +11,7 @@ Dependency updates come from [Renovate](https://docs.renovatebot.com/) running a
 
 From the shared `github>ardzero/sora-renovate:weekly` preset (details in that repo's README):
 
-- New PRs only open before 06:00 UTC on Mondays. The runner checks hourly, so automerges and Dependency Dashboard checkboxes take effect within the hour.
+- New PRs only open on Mondays (UTC); the whole day counts. The runner is scheduled hourly, but GitHub currently starts scheduled runs hours late, so automerges and Dependency Dashboard checkboxes can take a while. To act now, run the Renovate workflow in `ardzero/sora-renovate` by hand.
 - One PR for non-major npm updates and one for GitHub Actions, both automerged once `Verify` passes. Each major npm update gets its own PR; major GitHub Actions and workflow Node.js updates share one PR. Majors always wait for you.
 - Releases must be 3 days old; security fixes from OSV skip the wait. Actions are pinned to commit SHAs with a `# vX.Y.Z` comment.
 - Workflow `node-version` only moves between even (LTS) majors. `engines.node` is never changed.
