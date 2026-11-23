@@ -196,7 +196,7 @@ Go to setting tab of your npm package, open **Trusted Publisher** and use:
 
 Then click **Set up connection**.
 
-> **Optional:** Create a GitHub **Environment** named `npm` under repo **Settings → Environments** if it does not exist yet (required reviewers / branch rules are optional).
+> **Recommended:** Create a GitHub **Environment** named `npm` under repo **Settings → Environments**, add yourself under **Required reviewers**, and limit **Deployment branches** to `main`. Every release then waits for your approval, and nothing outside `main` can publish.
 
 ---
 
@@ -263,11 +263,12 @@ git push
 
 ## 5) Common pitfalls / caveats / warnings (important)
 
-- `id-token: write` is mandatory. Without it, Trusted Publisher auth fails.
+- `id-token: write` is mandatory on the publish job. Without it, Trusted Publisher auth fails.
+- The workflow has two jobs on purpose: `build` installs (frozen, install scripts off), builds and packs with no publish rights; `publish` only uploads that tarball. Don't merge them back into one job, or dependency code would run with publish rights.
 - Trusted Publisher metadata must match exactly (owner/repo/workflow filename and environment if used).
 - `workflow filename` in npm is only the file name (`publish-package.yml`), not `.github/workflows/publish-package.yml`.
 - If repo ownership changes (transfer/fork/rename), you must update Trusted Publisher config in npm.
-- Keep `prepublishOnly` intact (`bun run build`), otherwise CI may publish stale or missing `dist/`.
+- CI runs `bun run build` itself before packing, and publishes the tarball with `--ignore-scripts`. Keep `prepublishOnly` (`bun run build`) for manual `npm publish` from your machine.
 - `npm publish --provenance` needs GitHub-hosted runners + OIDC; avoid replacing with self-hosted until you validate provenance flow.
 - Avoid path filters that are too narrow; if `package.json` changes are excluded, release won’t trigger.
 - `contents: write` is not needed here (reference used it because a later step `git push`’d wrapper changes). This repo workflow only needs `contents: read` unless you add commit/push steps.
@@ -280,11 +281,11 @@ git push
 | Issue                                          | What to try                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `403 Forbidden` during CI publish              | Check Trusted Publisher mapping in npm package settings (owner/repo/workflow/env must match exactly).                          |
-| `No OIDC token` / auth failures                | Ensure workflow `permissions` has `id-token: write`.                                                                           |
+| `No OIDC token` / auth failures                | Ensure the publish job's `permissions` has `id-token: write`.                                                                  |
 | Workflow runs but publish step skipped         | Version already exists on npm (`npm view create-bunpack@<version> version`). Bump version and rerun.                           |
 | Workflow never triggered on push               | Validate `push.branches` and `push.paths` filters include changed files.                                                       |
 | `npm ERR! code E404` for package/version check | For unpublished versions this is expected; script handles it and continues.                                                    |
-| `bun install` fails in CI                      | Fix lockfile / `package.json` mismatch locally, run `bun install`, commit `bun.lock` if it changed, push.                      |
+| `bun install` fails in CI                      | CI uses `--frozen-lockfile`: run `bun install` locally, commit the updated `bun.lock`, push.                                    |
 | Trusted Publisher rejects the run              | GitHub environment name, workflow file name, repo owner/name must match npm Trusted Publisher fields exactly (`npm` env here). |
 | Package publishes but command fails right away | Registry propagation delay; retry smoke test after 30-120 seconds.                                                             |
 
@@ -294,7 +295,7 @@ git push
 
 1. `.github/workflows/publish-package.yml` exists and is committed (regenerate with `bun run gen:publish-workflow` after editing `publish-workflow-gen.ts`).
 2. npm Trusted Publisher is configured for your GitHub owner / repo / `publish-package.yml` with environment `npm`, and GitHub has an environment named `npm`.
-3. Workflow has `permissions.id-token: write`.
+3. The workflow's publish job has `permissions.id-token: write`.
 4. `package.json` version is bumped to an unpublished version.
 5. Commit pushed to `main` (or manual dispatch run triggered).
 6. Actions run shows publish step executed (not skipped).

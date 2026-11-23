@@ -592,8 +592,19 @@ function generateWorkflowYaml(): string {
   const env = workflowConfig.environmentName;
   const node = workflowConfig.nodeVersion;
   const wfFile = workflowConfig.workflowFilename;
+  const branchesCondition = workflowConfig.watchBranches
+    .map((b) => `github.ref == 'refs/heads/${b}'`)
+    .join(" || ");
 
   return `name: ${name}
+
+# Two jobs so dependency code never runs with publish rights:
+# - build: no secrets, no OIDC. Frozen install with install scripts off, build,
+#   version check, and pack the tarball to publish.
+# - publish: only when the version is new. Runs in the \`${env}\` environment
+#   (add required reviewers and a main-only branch rule to it in the repo
+#   settings) and publishes the packed tarball with npm trusted publishing.
+#   It checks out no code and installs nothing.
 
 on:
   workflow_dispatch:
@@ -604,78 +615,102 @@ ${branchesYaml}
 ${pathsYaml}
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  publish:
-    name: Publish package
+  build:
+    name: Build package
+    # Releases only come from the watched branches, including manual runs.
+    if: ${branchesCondition}
     runs-on: ubuntu-latest
-    environment: ${env}
+    outputs:
+      name: \${{ steps.version_check.outputs.name }}
+      version: \${{ steps.version_check.outputs.version }}
+      publish: \${{ steps.version_check.outputs.publish }}
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: \${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${yamlFlowScalar(node)}
-
-      - name: Upgrade npm to latest
-        run: npm install -g npm@latest
-
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Check package/version publish status
         id: version_check
         run: |
-          PKG_NAME=$(node -p "require('./package.json').name")
-          PKG_VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(bun -p "require('./package.json').name")
+          PKG_VERSION=$(bun -p "require('./package.json').version")
           echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
           echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
 
-          PUBLISHED=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
+          PUBLISHED=$(bun pm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "")
           if [ "$PUBLISHED" = "$PKG_VERSION" ]; then
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Registry already has \${PKG_NAME}@\${PKG_VERSION}. The publish step will be skipped (not an error)."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Registry already has \${PKG_NAME}@\${PKG_VERSION}. Publishing will be skipped (not an error)."
           else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Build and pack
+        if: steps.version_check.outputs.publish == 'true'
+        run: |
+          bun run build
+          bun pm pack --ignore-scripts --destination "$RUNNER_TEMP/package"
+
+      - name: Upload packed tarball
+        if: steps.version_check.outputs.publish == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: \${{ runner.temp }}/package/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish package
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: ${env}
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download packed tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: \${{ runner.temp }}/package
+
+      # npm is only needed for \`npm publish --provenance\` (trusted publishing
+      # via OIDC); Node's bundled npm supports it.
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${yamlFlowScalar(node)}
 
       - name: Publish to npm (Trusted Publisher OIDC)
-        id: npm_publish
-        if: steps.version_check.outputs.already_published == 'false'
-        run: npm publish --provenance
+        run: npm publish "$RUNNER_TEMP"/package/*.tgz --provenance --ignore-scripts
 
-      - name: Publish summary
-        if: always() && steps.version_check.outcome == 'success'
+      - name: Explain a failed publish
+        if: failure()
+        env:
+          NAME: \${{ needs.build.outputs.name }}
+          VERSION: \${{ needs.build.outputs.version }}
         run: |
-          NAME="\${{ steps.version_check.outputs.name }}"
-          VERSION="\${{ steps.version_check.outputs.version }}"
-
-          if [ "\${{ steps.version_check.outputs.already_published }}" = "true" ]; then
-            echo "::notice::Skipped npm publish — $NAME@$VERSION is already published on the registry."
-          elif [ "\${{ steps.npm_publish.outcome }}" = "success" ]; then
-            echo "::notice::Published $NAME@$VERSION to npm."
-          elif [ "\${{ steps.npm_publish.outcome }}" = "failure" ]; then
-            echo "::error::npm publish failed for $NAME@$VERSION."
-            echo ""
-            echo "If this looks like auth / OIDC / Trusted Publisher:"
-            echo "  • npm → package → Trusted Publisher: GitHub org/user, repo, workflow filename must match ${wfFile}, environment must match ${env}."
-            echo "  • GitHub repo → Settings → Environments: create environment \\"${env}\\" if missing."
-            echo "  • This workflow must keep permissions.id-token: write (OIDC)."
-            echo ""
-            echo "See PUBLISH_GUIDE.md (CI/CD section). Full error output is in the publish step log above."
-          elif [ "\${{ steps.npm_publish.outcome }}" = "skipped" ]; then
-            echo "::notice::Publish step was skipped (see version check log)."
-          fi
+          echo "::error::npm publish failed for $NAME@$VERSION."
+          echo ""
+          echo "If this looks like auth / OIDC / Trusted Publisher:"
+          echo "  • npm → package → Trusted Publisher: GitHub org/user, repo, workflow filename must match ${wfFile}, environment must match ${env}."
+          echo "  • GitHub repo → Settings → Environments: create environment \\"${env}\\" if missing."
+          echo "  • The publish job must keep permissions.id-token: write (OIDC)."
+          echo ""
+          echo "See PUBLISH_GUIDE.md (CI/CD section). Full error output is in the publish step log above."
 `;
 }
 
