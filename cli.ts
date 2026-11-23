@@ -487,8 +487,8 @@ function validateProjectName(name: string | undefined): string | undefined {
     if (seg === "." || seg === "..") {
       return "Path must be a relative location like ./my-cli or ./pkgs/my-cli";
     }
-    if (!/^[a-zA-Z0-9-]+$/.test(seg)) {
-      return "Each path segment must contain only letters, numbers, and hyphens";
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(seg)) {
+      return "Each path segment must start with a letter or number and contain only letters, numbers, and hyphens";
     }
   }
 
