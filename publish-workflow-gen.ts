@@ -20,7 +20,7 @@ const workflowConfig = {
     "README.md",
     // workflow file path is auto appended
   ],
-  nodeVersion: "24",
+  nodeVersion: "26",
   environmentName: "npm",
   // Directory only (no trailing slash required).
   workflowDir: ".github/workflows",
