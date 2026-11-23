@@ -1,60 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":configMigration",
-    "helpers:pinGitHubActionDigestsToSemver"
-  ],
-  "timezone": "Etc/UTC",
-  "schedule": ["before 6am on monday"],
-  "labels": ["dependencies"],
-  "rangeStrategy": "bump",
-  "minimumReleaseAge": "3 days",
-  "internalChecksFilter": "strict",
-  "platformAutomerge": false,
-  "osvVulnerabilityAlerts": true,
-  "vulnerabilityAlerts": {
-    "labels": ["dependencies", "security"]
-  },
-  "lockFileMaintenance": {
-    "enabled": true,
-    "automerge": true,
-    "schedule": ["before 6am on monday"]
-  },
-  "packageRules": [
-    {
-      "description": "Batch all non-major npm updates into one weekly PR and automerge it once CI passes.",
-      "matchManagers": ["bun", "npm"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "non-major dependencies",
-      "groupSlug": "non-major",
-      "automerge": true
-    },
-    {
-      "description": "Batch GitHub Actions updates (workflows + the publish workflow generator) into one PR. Non-major updates automerge; majors get their own PR for review.",
-      "matchManagers": ["github-actions", "custom.regex"],
-      "groupName": "GitHub Actions",
-      "groupSlug": "github-actions"
-    },
-    {
-      "matchManagers": ["github-actions", "custom.regex"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "automerge": true
-    },
-    {
-      "description": "Node.js in workflows is tracked by the custom regex manager below (keeps the major-only \"24\" format), not by the github-actions manager.",
-      "matchManagers": ["github-actions"],
-      "matchDepNames": ["node"],
-      "enabled": false
-    },
-    {
-      "description": "Only move Node.js between even (LTS) majors, keeping the major-only format.",
-      "matchManagers": ["custom.regex"],
-      "matchDatasources": ["node-version"],
-      "rangeStrategy": "replace",
-      "allowedVersions": "/^v?\\d*[02468](\\.|$)/"
-    }
-  ],
+  "extends": ["github>ardzero/sora-renovate:weekly"],
   "customManagers": [
     {
       "customType": "regex",
@@ -67,15 +13,9 @@
     },
     {
       "customType": "regex",
-      "description": "Track the major-only Node.js version in workflows and in the publish workflow generator together.",
-      "managerFilePatterns": [
-        "/^publish-workflow-gen\\.ts$/",
-        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "nodeVersion: \"(?<currentValue>\\d+)\"",
-        "node-version: \"(?<currentValue>\\d+)\""
-      ],
+      "description": "Track the major-only Node.js version in the publish workflow generator, together with the workflows (tracked by the shared preset).",
+      "managerFilePatterns": ["/^publish-workflow-gen\\.ts$/"],
+      "matchStrings": ["nodeVersion: \"(?<currentValue>\\d+)\""],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version"
     }
